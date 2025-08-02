@@ -119,6 +119,208 @@ function initMobileSupport() {
     
     // 图标加载优化
     optimizeIconLoading();
+    
+    // 强制确保移动端输入框可见
+    forceMobileInputVisibility();
+}
+
+// 强制确保移动端输入框可见
+function forceMobileInputVisibility() {
+    if (window.innerWidth <= 768) {
+        // 延迟执行，确保DOM完全加载
+        setTimeout(() => {
+            const inputContainer = document.querySelector('.input-container');
+            const inputWrapper = document.querySelector('.input-wrapper');
+            const messageInput = document.getElementById('messageInput');
+            const chatContainer = document.querySelector('.chat-container');
+            
+            if (inputContainer) {
+                // 强制设置样式
+                Object.assign(inputContainer.style, {
+                    position: 'fixed',
+                    bottom: '0',
+                    left: '0',
+                    right: '0',
+                    background: '#ffffff',
+                    borderTop: '1px solid #e5e7eb',
+                    zIndex: '9999',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    padding: '0.75rem',
+                    gap: '0.5rem',
+                    boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.1)',
+                    minHeight: '140px',
+                    maxHeight: '200px'
+                });
+                
+                console.log('✅ 输入框容器已强制显示');
+            }
+            
+            if (inputWrapper) {
+                Object.assign(inputWrapper.style, {
+                    display: 'flex',
+                    gap: '0.5rem',
+                    alignItems: 'flex-end',
+                    width: '100%'
+                });
+            }
+            
+            if (messageInput) {
+                Object.assign(messageInput.style, {
+                    flex: '1',
+                    minHeight: '44px',
+                    fontSize: '16px',
+                    padding: '0.75rem',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '0.5rem',
+                    resize: 'none',
+                    background: '#ffffff',
+                    display: 'block'
+                });
+            }
+            
+            if (chatContainer) {
+                Object.assign(chatContainer.style, {
+                    paddingBottom: '120px',
+                    height: 'calc(100vh - 120px)',
+                    overflow: 'hidden'
+                });
+            }
+            
+            // 监听窗口大小变化
+            window.addEventListener('resize', () => {
+                if (window.innerWidth <= 768) {
+                    forceMobileInputVisibility();
+                }
+            });
+            
+                // 监听滚动事件，确保输入框始终在底部
+    window.addEventListener('scroll', () => {
+        if (inputContainer) {
+            inputContainer.style.bottom = '0';
+        }
+    });
+    
+    // 定期检查输入框可见性
+    setInterval(() => {
+        const inputContainer = document.querySelector('.input-container');
+        if (inputContainer) {
+            const rect = inputContainer.getBoundingClientRect();
+            const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+            
+            if (!isVisible) {
+                console.log('⚠️ 检测到输入框不可见，正在修复...');
+                inputContainer.style.display = 'flex';
+                inputContainer.style.position = 'fixed';
+                inputContainer.style.bottom = '0';
+                inputContainer.style.zIndex = '9999';
+                
+                // 显示用户提示
+                showInputBoxHint();
+            }
+        }
+    }, 3000);
+    
+    }, 1000);
+}
+
+// 显示输入框提示
+function showInputBoxHint() {
+    // 移除已存在的提示
+    const existingHint = document.getElementById('inputBoxHint');
+    if (existingHint) {
+        existingHint.remove();
+    }
+    
+    const hint = document.createElement('div');
+    hint.id = 'inputBoxHint';
+    hint.innerHTML = `
+        <div style="
+            position: fixed;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ff4444;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 10000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 90%;
+        ">
+            <div style="margin-bottom: 8px;">💬 输入框可能被隐藏了</div>
+            <button onclick="forceMobileInputVisibility(); this.parentElement.remove();" 
+                    style="
+                        background: white;
+                        color: #ff4444;
+                        border: none;
+                        padding: 5px 10px;
+                        border-radius: 4px;
+                        font-size: 12px;
+                        cursor: pointer;
+                    ">
+                点击修复
+            </button>
+        </div>
+    `;
+    document.body.appendChild(hint);
+    
+    // 5秒后自动移除提示
+    setTimeout(() => {
+        if (hint.parentElement) {
+            hint.remove();
+        }
+    }, 5000);
+}
+        
+            // 再次检查，确保在页面完全加载后输入框可见
+    setTimeout(() => {
+        const inputContainer = document.querySelector('.input-container');
+        if (inputContainer && inputContainer.style.display === 'none') {
+            inputContainer.style.display = 'flex';
+            console.log('🔄 输入框显示状态已修复');
+        }
+        
+        // 添加调试信息
+        console.log('📱 移动端输入框调试信息:');
+        console.log('- 屏幕宽度:', window.innerWidth);
+        console.log('- 屏幕高度:', window.innerHeight);
+        console.log('- 输入框容器:', inputContainer);
+        if (inputContainer) {
+            console.log('- 输入框位置:', inputContainer.getBoundingClientRect());
+            console.log('- 输入框样式:', inputContainer.style.cssText);
+        }
+        
+        // 添加手动修复按钮（仅在开发环境）
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            addDebugButton();
+        }
+    }, 2000);
+}
+
+// 添加调试按钮
+function addDebugButton() {
+    const debugBtn = document.createElement('button');
+    debugBtn.textContent = '🔧 修复输入框';
+    debugBtn.style.cssText = `
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        z-index: 10000;
+        background: #ff4444;
+        color: white;
+        border: none;
+        padding: 10px;
+        border-radius: 5px;
+        font-size: 12px;
+    `;
+    debugBtn.onclick = () => {
+        forceMobileInputVisibility();
+        alert('输入框已强制修复！');
+    };
+    document.body.appendChild(debugBtn);
 }
 
 // 优化图标加载

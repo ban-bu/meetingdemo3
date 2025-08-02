@@ -1508,17 +1508,139 @@ body {
         flex-direction: column;
     }
     
-    /* 移动端消息输入区域固定在底部 */
+    /* 移动端消息输入区域固定在底部 - 多重保障 */
     .input-container {
-        position: sticky;
-        bottom: 0;
-        background: var(--bg-primary);
-        border-top: 1px solid var(--border-color);
-        z-index: 10;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        background: var(--bg-primary) !important;
+        border-top: 1px solid var(--border-color) !important;
+        z-index: 9999 !important;
         display: flex !important;
         flex-direction: column;
         padding: 0.75rem;
         gap: 0.5rem;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1) !important;
+        min-height: 140px; /* 增加高度以容纳按钮 */
+        max-height: 200px;
+        /* Safari 兼容性 */
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        /* 防止被其他元素覆盖 */
+        will-change: transform;
+    }
+    
+    /* 兼容不同浏览器的输入框样式 */
+    .input-wrapper {
+        display: flex !important;
+        gap: 0.5rem;
+        align-items: flex-end;
+        width: 100%;
+        min-height: 44px;
+    }
+    
+    #messageInput {
+        flex: 1;
+        min-height: 44px;
+        font-size: 16px !important;
+        padding: 0.75rem;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius);
+        resize: none;
+        background: var(--bg-primary);
+        display: block !important;
+        /* 防止iOS缩放 */
+        -webkit-appearance: none;
+        appearance: none;
+        /* 确保在Safari中正确显示 */
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+    }
+    
+    .input-actions {
+        display: flex !important;
+        gap: 0.5rem;
+        flex-shrink: 0;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        width: 100%;
+        margin-top: 0.5rem;
+    }
+    
+    /* 移动端按钮样式优化 */
+    .btn-ask-ai, .btn-summarize, .btn-upload {
+        flex: 1;
+        min-height: 44px;
+        padding: 0.75rem 0.5rem;
+        border: none;
+        border-radius: var(--radius);
+        background: var(--primary-color);
+        color: white;
+        cursor: pointer;
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .btn-ask-ai:hover, .btn-summarize:hover, .btn-upload:hover {
+        background: var(--primary-dark);
+        transform: translateY(-1px);
+    }
+    
+    .btn-ask-ai:active, .btn-summarize:active, .btn-upload:active {
+        transform: translateY(0);
+    }
+    
+    .btn-ask-ai i, .btn-summarize i, .btn-upload i {
+        margin-right: 0.25rem;
+        font-size: 1rem;
+    }
+    
+    /* 移动端按钮颜色区分 */
+    .btn-ask-ai {
+        background: var(--primary-color);
+    }
+    
+    .btn-summarize {
+        background: var(--success-color);
+    }
+    
+    .btn-upload {
+        background: var(--warning-color);
+    }
+    
+    .btn-ask-ai:hover {
+        background: var(--primary-dark);
+    }
+    
+    .btn-summarize:hover {
+        background: #059669;
+    }
+    
+    .btn-upload:hover {
+        background: #d97706;
+    }
+    
+    /* 确保聊天容器为输入框留出空间 */
+    .chat-container {
+        padding-bottom: 120px !important;
+        height: calc(100vh - 120px) !important;
+        overflow: hidden;
+    }
+    
+    .messages-container {
+        height: calc(100vh - 200px) !important;
+        overflow-y: auto;
+        padding: 0.5rem;
     }
     
     /* 确保输入框在移动端可见 */
