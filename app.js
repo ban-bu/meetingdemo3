@@ -48,6 +48,231 @@ const usernameModal = document.getElementById('usernameModal');
 const usernameInput = document.getElementById('usernameInput');
 const roomInput = document.getElementById('roomInput');
 
+// 移动端检测和响应式功能
+function initMobileSupport() {
+    const isMobile = window.innerWidth <= 768;
+    const mobileNav = document.getElementById('mobileNav');
+    const leftSidebar = document.querySelector('.left-sidebar');
+    const rightSidebar = document.querySelector('.right-sidebar');
+    const sidebarClose = document.getElementById('sidebarClose');
+    const aiPanelClose = document.getElementById('aiPanelClose');
+    
+    // 显示/隐藏移动端导航
+    if (isMobile) {
+        mobileNav.style.display = 'flex';
+        if (sidebarClose) sidebarClose.style.display = 'block';
+        if (aiPanelClose) aiPanelClose.style.display = 'block';
+        
+        // 默认隐藏侧边栏
+        leftSidebar.classList.remove('active');
+        rightSidebar.classList.remove('active');
+    } else {
+        mobileNav.style.display = 'none';
+        if (sidebarClose) sidebarClose.style.display = 'none';
+        if (aiPanelClose) aiPanelClose.style.display = 'none';
+        
+        // 桌面端显示侧边栏
+        leftSidebar.classList.remove('active');
+        rightSidebar.classList.remove('active');
+    }
+    
+    // 移动端导航点击事件
+    const navBtns = document.querySelectorAll('.mobile-nav-btn');
+    navBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.getAttribute('data-tab');
+            
+            // 更新导航状态
+            navBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // 切换内容区域
+            switchMobileTab(tab);
+        });
+    });
+    
+    // 侧边栏关闭按钮
+    if (sidebarClose) {
+        sidebarClose.addEventListener('click', () => {
+            leftSidebar.classList.remove('active');
+            // 重新激活聊天标签
+            navBtns.forEach(b => b.classList.remove('active'));
+            const chatBtn = document.querySelector('[data-tab="chat"]');
+            if (chatBtn) chatBtn.classList.add('active');
+            switchMobileTab('chat');
+        });
+    }
+    
+    if (aiPanelClose) {
+        aiPanelClose.addEventListener('click', () => {
+            rightSidebar.classList.remove('active');
+            // 重新激活聊天标签
+            navBtns.forEach(b => b.classList.remove('active'));
+            const chatBtn = document.querySelector('[data-tab="chat"]');
+            if (chatBtn) chatBtn.classList.add('active');
+            switchMobileTab('chat');
+        });
+    }
+    
+    // 监听窗口大小变化
+    window.addEventListener('resize', handleResize);
+}
+
+function switchMobileTab(tab) {
+    const leftSidebar = document.querySelector('.left-sidebar');
+    const rightSidebar = document.querySelector('.right-sidebar');
+    const chatContainer = document.querySelector('.chat-container');
+    
+    // 隐藏所有面板
+    leftSidebar.classList.remove('active');
+    rightSidebar.classList.remove('active');
+    chatContainer.style.display = 'flex';
+    
+    switch(tab) {
+        case 'participants':
+            if (window.innerWidth <= 768) {
+                leftSidebar.classList.add('active');
+                chatContainer.style.display = 'none';
+            }
+            break;
+        case 'ai':
+            if (window.innerWidth <= 768) {
+                rightSidebar.classList.add('active');
+                chatContainer.style.display = 'none';
+            }
+            break;
+        case 'chat':
+        default:
+            chatContainer.style.display = 'flex';
+            break;
+    }
+}
+
+// 窗口大小改变时重新初始化移动端支持
+function handleResize() {
+    initMobileSupport();
+}
+
+// 添加移动端手势支持
+function initTouchGestures() {
+    if (window.innerWidth <= 768) {
+        let startY = 0;
+        let startX = 0;
+        let currentY = 0;
+        let currentX = 0;
+        let threshold = 50; // 手势触发阈值
+        
+        // 为侧边栏添加滑动手势
+        const leftSidebar = document.querySelector('.left-sidebar');
+        const rightSidebar = document.querySelector('.right-sidebar');
+        
+        // 从左边缘滑动打开参与者面板
+        document.addEventListener('touchstart', (e) => {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+        });
+        
+        document.addEventListener('touchmove', (e) => {
+            if (!startX || !startY) return;
+            
+            currentX = e.touches[0].clientX;
+            currentY = e.touches[0].clientY;
+            
+            const diffX = currentX - startX;
+            const diffY = currentY - startY;
+            
+            // 确保是水平滑动
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                // 从左边缘向右滑动，打开参与者面板
+                if (startX < 20 && diffX > threshold) {
+                    const navBtns = document.querySelectorAll('.mobile-nav-btn');
+                    navBtns.forEach(b => b.classList.remove('active'));
+                    document.querySelector('[data-tab="participants"]').classList.add('active');
+                    switchMobileTab('participants');
+                }
+                
+                // 从右边缘向左滑动，打开AI工具面板
+                if (startX > window.innerWidth - 20 && diffX < -threshold) {
+                    const navBtns = document.querySelectorAll('.mobile-nav-btn');
+                    navBtns.forEach(b => b.classList.remove('active'));
+                    document.querySelector('[data-tab="ai"]').classList.add('active');
+                    switchMobileTab('ai');
+                }
+                
+                // 在侧边栏上向相反方向滑动，关闭面板
+                if (leftSidebar.classList.contains('active') && diffX < -threshold) {
+                    leftSidebar.classList.remove('active');
+                    const navBtns = document.querySelectorAll('.mobile-nav-btn');
+                    navBtns.forEach(b => b.classList.remove('active'));
+                    document.querySelector('[data-tab="chat"]').classList.add('active');
+                    switchMobileTab('chat');
+                }
+                
+                if (rightSidebar.classList.contains('active') && diffX > threshold) {
+                    rightSidebar.classList.remove('active');
+                    const navBtns = document.querySelectorAll('.mobile-nav-btn');
+                    navBtns.forEach(b => b.classList.remove('active'));
+                    document.querySelector('[data-tab="chat"]').classList.add('active');
+                    switchMobileTab('chat');
+                }
+            }
+        });
+        
+        document.addEventListener('touchend', () => {
+            startX = 0;
+            startY = 0;
+        });
+        
+        // 防止默认的滑动行为干扰
+        document.addEventListener('touchmove', (e) => {
+            if (leftSidebar.classList.contains('active') || rightSidebar.classList.contains('active')) {
+                // 在侧边栏打开时，阻止页面滚动
+                if (e.target.closest('.left-sidebar') || e.target.closest('.right-sidebar')) {
+                    return;
+                }
+                e.preventDefault();
+            }
+        }, { passive: false });
+    }
+}
+
+// 优化移动端输入体验
+function optimizeMobileInput() {
+    if (window.innerWidth <= 768) {
+        const messageInput = document.getElementById('messageInput');
+        
+        // 移动端输入框获得焦点时，调整视图
+        messageInput.addEventListener('focus', () => {
+            setTimeout(() => {
+                messageInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 300);
+        });
+        
+        // 移动端虚拟键盘处理
+        let initialHeight = window.innerHeight;
+        window.addEventListener('resize', () => {
+            const currentHeight = window.innerHeight;
+            const heightDiff = initialHeight - currentHeight;
+            
+            // 检测虚拟键盘是否弹出（高度减少超过150px）
+            if (heightDiff > 150) {
+                document.body.classList.add('keyboard-open');
+                // 调整聊天容器高度
+                const chatContainer = document.querySelector('.chat-container');
+                if (chatContainer) {
+                    chatContainer.style.height = `${currentHeight - 120}px`;
+                }
+            } else {
+                document.body.classList.remove('keyboard-open');
+                const chatContainer = document.querySelector('.chat-container');
+                if (chatContainer) {
+                    chatContainer.style.height = '';
+                }
+            }
+        });
+    }
+}
+
 // 初始化
 function init() {
     // 从URL获取房间号，如果没有则在设置用户名时处理
@@ -60,6 +285,11 @@ function init() {
     
     setupEventListeners();
     setupRealtimeClient();
+    
+    // 初始化移动端支持
+    initMobileSupport();
+    initTouchGestures();
+    optimizeMobileInput();
     
     // 检查文档处理库加载状态
     setTimeout(checkDocumentLibraries, 1000); // 延迟1秒确保库完全加载

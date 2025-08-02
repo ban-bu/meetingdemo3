@@ -34,8 +34,27 @@
             </div>
         </header>
 
+        <!-- 移动端导航 -->
+        <div class="mobile-nav" id="mobileNav" style="display: none;">
+            <button class="mobile-nav-btn active" data-tab="chat">
+                <i class="fas fa-comments"></i>
+                <span>聊天</span>
+            </button>
+            <button class="mobile-nav-btn" data-tab="participants">
+                <i class="fas fa-user-friends"></i>
+                <span>成员</span>
+            </button>
+            <button class="mobile-nav-btn" data-tab="ai">
+                <i class="fas fa-robot"></i>
+                <span>AI工具</span>
+            </button>
+        </div>
+
         <main class="main-content">
             <div class="left-sidebar">
+                <button class="sidebar-close" id="sidebarClose" style="display: none;">
+                    <i class="fas fa-times"></i>
+                </button>
                 <div class="participants-panel">
                     <h3><i class="fas fa-user-friends"></i> 在线成员</h3>
                     <div class="participants-search">
@@ -117,6 +136,9 @@
             </div>
 
             <div class="right-sidebar">
+                <button class="sidebar-close" id="aiPanelClose" style="display: none;">
+                    <i class="fas fa-times"></i>
+                </button>
                 <div class="ai-toolbox-panel">
                     <h3><i class="fas fa-robot"></i> AI工具箱</h3>
                     <div class="toolbox-content">

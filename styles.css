@@ -1087,6 +1087,437 @@ body {
     font-size: 0.9rem;
 }
 
+/* ================================================
+   移动端响应式设计
+   ================================================ */
+
+/* 移动端全局设置 */
+@media (max-width: 768px) {
+    body {
+        overflow: auto;
+        height: 100vh;
+        position: fixed;
+        width: 100%;
+    }
+    
+    .app-container {
+        height: 100vh;
+        position: relative;
+    }
+    
+    /* 头部优化 */
+    .header {
+        padding: 0.5rem 1rem;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+    }
+    
+    .header-content {
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: flex-start;
+    }
+    
+    .header h1 {
+        font-size: 1.25rem;
+    }
+    
+    .room-info {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .room-id {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+    
+    /* 主要内容区域 - 移动端改为垂直堆叠 */
+    .main-content {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
+        height: calc(100vh - 120px); /* 减去头部高度 */
+        gap: 0;
+        position: relative;
+    }
+    
+    /* 移动端导航切换 */
+    .mobile-nav {
+        display: flex;
+        background: var(--bg-primary);
+        border-bottom: 1px solid var(--border-color);
+        padding: 0;
+        position: sticky;
+        top: 0;
+        z-index: 99;
+    }
+    
+    .mobile-nav-btn {
+        flex: 1;
+        padding: 0.75rem 0.5rem;
+        border: none;
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-bottom: 2px solid transparent;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    
+    .mobile-nav-btn.active {
+        color: var(--primary-color);
+        border-bottom-color: var(--primary-color);
+        background: rgba(102, 126, 234, 0.05);
+    }
+    
+    .mobile-nav-btn i {
+        font-size: 1.1rem;
+    }
+    
+    /* 侧边栏 - 移动端隐藏并可切换显示 */
+    .left-sidebar, .right-sidebar {
+        position: fixed;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100vh;
+        background: var(--bg-primary);
+        z-index: 200;
+        transition: left 0.3s ease;
+        overflow-y: auto;
+        padding-top: 60px; /* 为关闭按钮留空间 */
+    }
+    
+    .right-sidebar {
+        left: 100%;
+        transition: left 0.3s ease;
+    }
+    
+    .left-sidebar.active {
+        left: 0;
+    }
+    
+    .right-sidebar.active {
+        left: 0;
+    }
+    
+    .sidebar-close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        color: var(--text-secondary);
+        cursor: pointer;
+        z-index: 201;
+    }
+    
+    /* 聊天容器 */
+    .chat-container {
+        border: none;
+        border-radius: 0;
+        height: 100%;
+        order: 2;
+    }
+    
+    .chat-header {
+        padding: 0.75rem 1rem;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+    
+    .chat-header h3 {
+        font-size: 1rem;
+        text-align: center;
+    }
+    
+    .chat-search {
+        max-width: none;
+    }
+    
+    .ai-status {
+        justify-content: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    
+    /* 消息区域 */
+    .messages-container {
+        padding: 0.5rem;
+        height: calc(100vh - 280px); /* 调整高度 */
+    }
+    
+    .message {
+        margin-bottom: 0.75rem;
+    }
+    
+    .message-content {
+        max-width: 90%;
+        padding: 0.75rem;
+    }
+    
+    /* 输入区域 */
+    .input-container {
+        padding: 0.75rem;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    
+    .input-group {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .message-input {
+        min-height: 44px; /* 触摸友好的最小高度 */
+        font-size: 16px; /* 防止iOS缩放 */
+    }
+    
+    .input-actions {
+        justify-content: space-between;
+        width: 100%;
+    }
+    
+    .btn-file, .btn-send, .btn-ai {
+        min-height: 44px;
+        min-width: 44px;
+        padding: 0.75rem;
+    }
+    
+    /* AI工具栏 - 移动端优化 */
+    .ai-panel {
+        position: fixed;
+        bottom: -100%;
+        left: 0;
+        right: 0;
+        height: 70vh;
+        background: var(--bg-primary);
+        border-top: 1px solid var(--border-color);
+        border-radius: 1rem 1rem 0 0;
+        z-index: 150;
+        transition: bottom 0.3s ease;
+        overflow-y: auto;
+        box-shadow: var(--shadow-xl);
+    }
+    
+    .ai-panel.active {
+        bottom: 0;
+    }
+    
+    .ai-panel-header {
+        position: sticky;
+        top: 0;
+        background: var(--bg-primary);
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .ai-panel-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        color: var(--text-secondary);
+        cursor: pointer;
+    }
+    
+    .ai-tools {
+        padding: 1rem;
+        gap: 0.75rem;
+    }
+    
+    .ai-tool {
+        padding: 1rem;
+        border-radius: var(--radius-lg);
+        min-height: 60px;
+        font-size: 0.9rem;
+    }
+    
+    /* 文件相关 */
+    .file-content {
+        max-width: 100%;
+        overflow-x: auto;
+    }
+    
+    .file-preview {
+        max-height: 200px;
+        border-radius: var(--radius);
+    }
+    
+    /* 参与者列表优化 */
+    .participants-list .participant {
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .participant-avatar {
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+    }
+    
+    /* 搜索优化 */
+    .search-input {
+        font-size: 16px !important; /* 防止iOS缩放 */
+        min-height: 44px;
+    }
+    
+    /* 按钮优化 */
+    .btn-primary, .btn-secondary, .btn-ai-tool {
+        min-height: 44px;
+        padding: 0.75rem 1rem;
+        font-size: 0.9rem;
+    }
+    
+    /* 模态框优化 */
+    .modal {
+        margin: 1rem;
+        width: calc(100vw - 2rem);
+        max-height: calc(100vh - 2rem);
+        border-radius: var(--radius-lg);
+    }
+    
+    /* Toast优化 */
+    .toast {
+        left: 1rem;
+        right: 1rem;
+        width: auto;
+        max-width: none;
+    }
+    
+    /* 连接状态优化 */
+    .connection-status {
+        position: fixed;
+        top: auto;
+        bottom: 1rem;
+        left: 50%;
+        transform: translateX(-50%);
+        min-width: 120px;
+        text-align: center;
+    }
+    
+    /* 创建者按钮优化 */
+    .creator-actions {
+        padding: 0.75rem;
+        margin-top: 0.75rem;
+    }
+    
+    .btn-end-meeting {
+        min-height: 48px;
+        font-size: 0.9rem;
+    }
+    
+    /* 滚动条优化 */
+    .messages-container::-webkit-scrollbar,
+    .ai-panel::-webkit-scrollbar,
+    .sidebar::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .messages-container::-webkit-scrollbar-track,
+    .ai-panel::-webkit-scrollbar-track,
+    .sidebar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    
+    .messages-container::-webkit-scrollbar-thumb,
+    .ai-panel::-webkit-scrollbar-thumb,
+    .sidebar::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 3px;
+    }
+    
+    /* 虚拟键盘处理 */
+    body.keyboard-open {
+        height: 100vh;
+        overflow: hidden;
+    }
+    
+    body.keyboard-open .chat-container {
+        height: auto !important;
+        max-height: calc(100vh - 200px);
+    }
+    
+    body.keyboard-open .messages-container {
+        height: calc(100vh - 350px) !important;
+        max-height: calc(100vh - 350px);
+    }
+    
+    /* 触摸优化 */
+    .mobile-nav-btn, .sidebar-close, .btn-file, .btn-send, .btn-ai,
+    .tool-btn, .participant, .message-file {
+        -webkit-tap-highlight-color: rgba(102, 126, 234, 0.2);
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+    
+    /* 防止缩放 */
+    input, textarea, select {
+        font-size: 16px !important;
+        -webkit-appearance: none;
+        border-radius: 0;
+    }
+    
+    /* 移动端优化的按钮交互 */
+    .mobile-nav-btn:active {
+        transform: scale(0.95);
+        background: rgba(102, 126, 234, 0.1);
+    }
+    
+    .tool-btn:active, .btn-primary:active, .btn-secondary:active {
+        transform: scale(0.98);
+    }
+    
+    /* 移动端文件预览优化 */
+    .file-preview img {
+        max-width: 100%;
+        height: auto;
+        object-fit: contain;
+    }
+    
+    .file-content {
+        word-break: break-word;
+        overflow-wrap: break-word;
+    }
+    
+    /* 移动端模态框全屏显示 */
+    .modal {
+        width: 100vw !important;
+        height: 100vh !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        max-width: none !important;
+        max-height: none !important;
+    }
+    
+    .modal-content {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    /* 移动端消息输入区域固定在底部 */
+    .input-container {
+        position: sticky;
+        bottom: 0;
+        background: var(--bg-primary);
+        border-top: 1px solid var(--border-color);
+        z-index: 10;
+    }
+}
+
 .file-download {
     color: var(--primary-color);
     cursor: pointer;
