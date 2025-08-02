@@ -61,7 +61,11 @@ function init() {
     setupEventListeners();
     setupRealtimeClient();
     
-
+    // 检查文档处理库加载状态
+    setTimeout(checkDocumentLibraries, 1000); // 延迟1秒确保库完全加载
+    
+    // 测试XLSX库
+    setTimeout(testXLSXLibrary, 1500);
     
     showUsernameModal();
     registerServiceWorker();
@@ -209,22 +213,8 @@ function setupRealtimeClient() {
             
             // 智能合并参与者列表
             if (data.participants) {
-                // 合并参与者，保持当前用户信息
-                const serverParticipants = data.participants;
-                const currentUserExists = serverParticipants.find(p => p.userId === currentUserId);
-                
-                if (!currentUserExists && currentUsername) {
-                    // 添加当前用户到列表
-                    serverParticipants.push({
-                        userId: currentUserId,
-                        name: currentUsername,
-                        status: 'online',
-                        joinTime: Date.now(),
-                        lastSeen: Date.now()
-                    });
-                }
-                
-                participants = serverParticipants;
+                // 直接使用服务器返回的参与者列表，避免重复添加
+                participants = data.participants;
                 renderParticipants();
             }
         },
@@ -463,10 +453,10 @@ function handleStorageChange(e) {
 
 // 添加当前用户到参与者列表
 function addCurrentUserToParticipants() {
-    const existingUser = participants.find(p => p.id === currentUserId);
+    const existingUser = participants.find(p => p.userId === currentUserId);
     if (!existingUser && currentUsername) {
         participants.push({
-            id: currentUserId,
+            userId: currentUserId,
             name: currentUsername,
             status: 'online',
             joinTime: Date.now()
@@ -675,12 +665,13 @@ async function sendMessage() {
 }
 
 // 添加消息到界面
-function addMessage(type, text, author = 'AI助手', userId = null, shouldBroadcast = true) {
+function addMessage(type, text, author = 'AI助手', userId = null, shouldBroadcast = true, isAIQuestion = false) {
     const message = {
         type,
         text,
         author,
         userId: userId || (type === 'ai' ? 'ai-assistant' : 'unknown'),
+        isAIQuestion: isAIQuestion || false,
         time: new Date().toLocaleTimeString('zh-CN', { 
             hour: '2-digit', 
             minute: '2-digit' 
@@ -708,7 +699,7 @@ function addMessage(type, text, author = 'AI助手', userId = null, shouldBroadc
 // 渲染单条消息
 function renderMessage(message) {
     const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${message.type}-message`;
+    messageDiv.className = `message ${message.type}-message${message.isAIQuestion ? ' ai-question-message' : ''}`;
     messageDiv.dataset.messageId = message.id || Date.now();
     
     let avatarContent;
@@ -736,7 +727,8 @@ function renderMessage(message) {
             </div>
         `;
     } else {
-        messageText = `<div class="message-text">${message.text}</div>`;
+        const aiQuestionPrefix = message.isAIQuestion ? '<i class="fas fa-robot ai-question-icon"></i> [询问AI] ' : '';
+        messageText = `<div class="message-text">${aiQuestionPrefix}${message.text}</div>`;
     }
     
     messageDiv.innerHTML = `
@@ -884,8 +876,8 @@ async function submitAIQuestion() {
     const question = aiQuestionInput.value.trim();
     if (!question || isAIProcessing) return;
     
-    // 添加用户问题
-    addMessage('user', question, currentUsername, currentUserId);
+    // 添加用户问题（标记为AI问题）
+    addMessage('user', question, currentUsername, currentUserId, true, true);
     closeAskAIModal();
     
     isAIProcessing = true;
@@ -1194,16 +1186,127 @@ function renderParticipants() {
 
 // 这里可以添加真实的用户加入功能，例如WebSocket连接
 
+// 检查文档处理库是否正确加载
+function checkDocumentLibraries() {
+    const libraries = {
+        'PDF.js': typeof pdfjsLib !== 'undefined',
+        'Mammoth.js': typeof mammoth !== 'undefined',
+        'XLSX.js': typeof XLSX !== 'undefined'
+    };
+    
+    console.log('文档处理库加载状态:', libraries);
+    
+    const missingLibs = Object.entries(libraries)
+        .filter(([name, loaded]) => !loaded)
+        .map(([name]) => name);
+    
+    if (missingLibs.length > 0) {
+        console.warn('以下库未正确加载:', missingLibs.join(', '));
+        showToast(`部分文档处理功能不可用：${missingLibs.join(', ')}`, 'warning');
+    }
+    
+    return libraries;
+}
+
 // 处理Excel文档
 async function processExcelDocument(file, fileMessage) {
     try {
-        showToast('正在处理Excel文件...', 'info');
+        showToast('正在提取Excel文件内容...', 'info');
+        
+        // 检查XLSX.js是否加载
+        if (typeof XLSX === 'undefined') {
+            throw new Error('XLSX.js库未加载，请刷新页面重试');
+        }
         
         const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
         
-        // 使用Mammoth.js或其他库处理Excel，这里用模拟处理
-        // 在实际应用中，可以使用xlsx.js库
-        const content = `Excel文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n文件类型: ${file.type}\n\n内容摘要：这是一个Excel电子表格文件。由于浏览器限制，无法直接解析其内容，但可以通过AI工具箱进行智能分析。`;
+        let allSheetsContent = '';
+        const sheetNames = workbook.SheetNames;
+        
+        // 遍历所有工作表
+        for (let i = 0; i < sheetNames.length; i++) {
+            const sheetName = sheetNames[i];
+            const worksheet = workbook.Sheets[sheetName];
+            
+            // 尝试多种方法提取工作表内容
+            try {
+                let sheetContent = '';
+                
+                // 方法1：使用sheet_to_csv (如果存在)
+                if (typeof XLSX.utils.sheet_to_csv === 'function') {
+                    try {
+                        const csvData = XLSX.utils.sheet_to_csv(worksheet);
+                        if (csvData && csvData.trim()) {
+                            sheetContent = csvData.trim();
+                        }
+                    } catch (csvError) {
+                        console.warn(`CSV转换失败:`, csvError);
+                    }
+                }
+                
+                // 方法2：使用sheet_to_json（备用方法）
+                if (!sheetContent && typeof XLSX.utils.sheet_to_json === 'function') {
+                    try {
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                        if (jsonData && jsonData.length > 0) {
+                            sheetContent = jsonData.map(row => {
+                                return (row || []).join('\t');
+                            }).filter(line => line.trim()).join('\n');
+                        }
+                    } catch (jsonError) {
+                        console.warn(`JSON转换失败:`, jsonError);
+                    }
+                }
+                
+                // 方法3：直接读取单元格（最后的备用方法）
+                if (!sheetContent) {
+                    try {
+                        const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:A1');
+                        const cells = [];
+                        for (let row = range.s.r; row <= range.e.r; row++) {
+                            const rowData = [];
+                            for (let col = range.s.c; col <= range.e.c; col++) {
+                                const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+                                const cell = worksheet[cellAddress];
+                                rowData.push(cell ? (cell.v || '') : '');
+                            }
+                            if (rowData.some(cell => cell.toString().trim())) {
+                                cells.push(rowData.join('\t'));
+                            }
+                        }
+                        sheetContent = cells.join('\n');
+                    } catch (cellError) {
+                        console.warn(`单元格读取失败:`, cellError);
+                    }
+                }
+                
+                if (sheetContent && sheetContent.trim()) {
+                    allSheetsContent += `\n=== 工作表: ${sheetName} ===\n`;
+                    allSheetsContent += sheetContent.trim() + '\n';
+                } else {
+                    console.warn(`工作表 ${sheetName} 无内容或无法读取`);
+                }
+                
+            } catch (sheetError) {
+                console.error(`处理工作表 ${sheetName} 完全失败:`, sheetError);
+            }
+        }
+        
+        if (!allSheetsContent.trim()) {
+            throw new Error('Excel文件中没有找到可提取的数据');
+        }
+        
+        // 构建完整内容
+        const content = `Excel文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n工作表数量: ${sheetNames.length}\n\n内容：${allSheetsContent.trim()}`;
+        
+        console.log('Excel文件处理完成:', {
+            fileName: file.name,
+            fileType: file.type,
+            sheetsCount: sheetNames.length,
+            contentLength: allSheetsContent.length,
+            content: content.substring(0, 200) + (content.length > 200 ? '...' : '')
+        });
         
         window.currentFileInfo = {
             name: file.name,
@@ -1213,19 +1316,51 @@ async function processExcelDocument(file, fileMessage) {
         };
         
         showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+        showToast('Excel文件内容提取完成', 'success');
         
     } catch (error) {
         console.error('处理Excel文件失败:', error);
-        showToast('处理Excel文件失败，请稍后重试', 'error');
+        showToast(`Excel文件处理失败: ${error.message}`, 'error');
+        
+        // 即使失败也显示工具箱，但使用占位符内容
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: `这是一个Excel文件，但无法提取内容。文件可能已损坏或使用了不支持的格式。`
+        };
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
     }
 }
 
 // 处理PPT文档
 async function processPPTDocument(file, fileMessage) {
     try {
-        showToast('正在处理PPT文件...', 'info');
+        showToast('正在分析PPT文件...', 'info');
         
-        const content = `PPT文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n文件类型: ${file.type}\n\n内容摘要：这是一个PowerPoint演示文稿文件。由于浏览器限制，无法直接解析其内容，但可以通过AI工具箱进行智能分析。`;
+        const arrayBuffer = await file.arrayBuffer();
+        
+        // PPT文件结构比较复杂，直接解析困难
+        // 我们提供文件信息和基本分析，用户可以通过AI工具进行深度分析
+        let content = `PowerPoint文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n文件类型: ${file.type}\n\n`;
+        
+        // 尝试检测是否是新格式的PPTX（实际上是ZIP文件）
+        const uint8Array = new Uint8Array(arrayBuffer);
+        const isZipFormat = uint8Array[0] === 0x50 && uint8Array[1] === 0x4B; // PK signature
+        
+        if (isZipFormat) {
+            content += `文件格式：PowerPoint 2007+ (.pptx)\n`;
+            content += `压缩格式：是（基于XML）\n\n`;
+            content += `内容摘要：这是一个现代PowerPoint演示文稿文件。由于PPT文件结构复杂，无法直接提取文本内容，但您可以使用AI工具进行智能分析，包括：\n`;
+            content += `• 幻灯片内容识别\n`;
+            content += `• 图表和图片分析\n`;
+            content += `• 文本信息提取\n`;
+            content += `• 演示文稿结构分析`;
+        } else {
+            content += `文件格式：PowerPoint 97-2003 (.ppt)\n`;
+            content += `压缩格式：否（二进制格式）\n\n`;
+            content += `内容摘要：这是一个传统PowerPoint演示文稿文件。建议转换为.pptx格式以获得更好的兼容性，或使用AI工具进行内容分析。`;
+        }
         
         window.currentFileInfo = {
             name: file.name,
@@ -1235,10 +1370,20 @@ async function processPPTDocument(file, fileMessage) {
         };
         
         showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+        showToast('PPT文件分析完成，可使用AI工具进一步处理', 'success');
         
     } catch (error) {
         console.error('处理PPT文件失败:', error);
-        showToast('处理PPT文件失败，请稍后重试', 'error');
+        showToast(`PPT文件处理失败: ${error.message}`, 'error');
+        
+        // 即使失败也显示工具箱，但使用占位符内容
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: `这是一个PowerPoint演示文稿文件。由于文件格式复杂或文件可能损坏，无法直接分析内容。建议检查文件完整性或使用其他工具。`
+        };
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
     }
 }
 
@@ -1544,7 +1689,8 @@ async function processFile(file) {
         return;
     }
     
-    const supportedTypes = [
+    // 支持AI分析的文件类型
+    const aiSupportedTypes = [
         // 图片格式
         'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml',
         // 文档格式
@@ -1564,9 +1710,11 @@ async function processFile(file) {
         'application/zip', 'application/x-rar-compressed', 'application/x-tar'
     ];
     
-    if (!supportedTypes.includes(file.type)) {
-        showToast('不支持的文件类型', 'error');
-        return;
+    // 现在支持所有文件类型上传，但只有特定类型支持AI分析
+    const supportsAI = aiSupportedTypes.includes(file.type);
+    
+    if (!supportsAI) {
+        console.log(`文件类型 ${file.type} 不支持AI分析，但可以上传和下载`);
     }
     
     // 将文件转换为base64以支持跨端分享
@@ -1610,42 +1758,65 @@ async function processFile(file) {
         window.realtimeClient.sendMessage(fileMessageForOthers);
     }
     
+    // 调试：文件类型信息
+    console.log('处理文件:', {
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        supportsAI: supportsAI
+    });
+    
     // 根据文件类型处理内容
-    if (file.type === 'text/plain') {
-        await processTextFile(file, fileMessage);
-    } else if (file.type.startsWith('image/')) {
-        // 图片文件 - 设置文件信息但不自动处理
+    if (supportsAI) {
+        // 支持AI分析的文件类型
+        if (file.type === 'text/plain') {
+            await processTextFile(file, fileMessage);
+        } else if (file.type.startsWith('image/')) {
+            // 图片文件 - 设置文件信息但不自动处理
+            window.currentFileInfo = {
+                name: file.name,
+                url: URL.createObjectURL(file),
+                type: file.type
+            };
+            showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+        } else if (file.type === 'application/pdf' || file.type.includes('word')) {
+            // PDF和Word文档 - 提取文本内容
+            if (file.type === 'application/pdf') {
+                await processPDFDocument(file, fileMessage);
+            } else if (file.type.includes('word')) {
+                await processWordDocument(file, fileMessage);
+            }
+        } else if (file.type.includes('excel') || file.type.includes('spreadsheet') || 
+                   file.type === 'application/vnd.ms-excel' ||
+                   file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+            // Excel文件
+            await processExcelDocument(file, fileMessage);
+        } else if (file.type.includes('powerpoint') || file.type.includes('presentation')) {
+            // PPT文件
+            await processPPTDocument(file, fileMessage);
+        } else if (file.type === 'text/csv') {
+            // CSV文件
+            await processCSVFile(file, fileMessage);
+        } else if (file.type === 'application/json') {
+            // JSON文件
+            await processJSONFile(file, fileMessage);
+        } else if (file.type === 'text/html' || file.type === 'text/xml') {
+            // HTML/XML文件
+            await processHTMLFile(file, fileMessage);
+        } else {
+            // 其他支持AI的文件类型 - 尝试提取文本内容
+            await processGenericFile(file, fileMessage);
+        }
+    } else {
+        // 不支持AI分析的文件类型 - 只显示文件信息，不提供AI工具
         window.currentFileInfo = {
             name: file.name,
             url: URL.createObjectURL(file),
             type: file.type
         };
-        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
-    } else if (file.type === 'application/pdf' || file.type.includes('word')) {
-        // PDF和Word文档 - 提取文本内容
-        if (file.type === 'application/pdf') {
-            await processPDFDocument(file, fileMessage);
-        } else if (file.type.includes('word')) {
-            await processWordDocument(file, fileMessage);
-        }
-    } else if (file.type.includes('excel') || file.type.includes('spreadsheet')) {
-        // Excel文件
-        await processExcelDocument(file, fileMessage);
-    } else if (file.type.includes('powerpoint') || file.type.includes('presentation')) {
-        // PPT文件
-        await processPPTDocument(file, fileMessage);
-    } else if (file.type === 'text/csv') {
-        // CSV文件
-        await processCSVFile(file, fileMessage);
-    } else if (file.type === 'application/json') {
-        // JSON文件
-        await processJSONFile(file, fileMessage);
-    } else if (file.type === 'text/html' || file.type === 'text/xml') {
-        // HTML/XML文件
-        await processHTMLFile(file, fileMessage);
-    } else {
-        // 其他文件类型 - 尝试提取文本内容
-        await processGenericFile(file, fileMessage);
+        
+        showToast(`文件 ${file.name} 已上传，可供下载`, 'success');
+        console.log(`不支持AI分析的文件类型: ${file.type}, 仅提供下载功能`);
     }
 }
 
@@ -1771,6 +1942,11 @@ async function processPDFDocument(file, fileMessage) {
     try {
         showToast('正在提取PDF文档内容...', 'info');
         
+        // 检查PDF.js是否加载
+        if (typeof pdfjsLib === 'undefined') {
+            throw new Error('PDF.js库未加载，请刷新页面重试');
+        }
+        
         const fileData = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: fileData }).promise;
         
@@ -1818,6 +1994,11 @@ async function processPDFDocument(file, fileMessage) {
 async function processWordDocument(file, fileMessage) {
     try {
         showToast('正在提取Word文档内容...', 'info');
+        
+        // 检查mammoth.js是否加载
+        if (typeof mammoth === 'undefined') {
+            throw new Error('Mammoth.js库未加载，请刷新页面重试');
+        }
         
         const arrayBuffer = await file.arrayBuffer();
         const result = await mammoth.extractRawText({ arrayBuffer });
@@ -1939,10 +2120,24 @@ function renderFileContent(message) {
     if (message.type === 'file') {
         const icon = getFileIcon(message.file.type);
         const messageId = Date.now();
-        const isSupportedForAI = message.file.type.startsWith('image/') || 
-                               message.file.type === 'text/plain' ||
-                               message.file.type === 'application/pdf' ||
-                               message.file.type.includes('word');
+        // 扩展AI支持检测，包含更多文件类型
+        const aiSupportedTypes = [
+            'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml',
+            'application/pdf', 'text/plain', 'text/csv',
+            // Word文档格式
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            // Excel表格格式
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            // PowerPoint演示文稿格式
+            'application/vnd.ms-powerpoint',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            // 其他文本格式
+            'text/html', 'text/xml', 'application/json'
+        ];
+        
+        const isSupportedForAI = aiSupportedTypes.includes(message.file.type);
         
         return `
             <div class="file-message" data-file-id="${messageId}" data-file-name="${message.file.name}" data-file-url="${message.file.url}" data-file-type="${message.file.type}">
@@ -1950,6 +2145,7 @@ function renderFileContent(message) {
                 <div class="file-info">
                     <div class="file-name">${message.file.name}</div>
                     <div class="file-size">${message.file.size}</div>
+                    ${!isSupportedForAI ? '<div class="file-note">该文件类型暂不支持AI分析</div>' : ''}
                 </div>
                 <div class="file-actions">
                     <a href="${message.file.url}" download="${message.file.name}" class="file-download" title="下载文件">
@@ -1985,7 +2181,15 @@ function getFileIcon(fileType) {
     if (fileType.startsWith('image/')) return 'fa-image';
     if (fileType === 'application/pdf') return 'fa-file-pdf';
     if (fileType.includes('word')) return 'fa-file-word';
+    if (fileType.includes('excel') || fileType.includes('spreadsheet')) return 'fa-file-excel';
+    if (fileType.includes('powerpoint') || fileType.includes('presentation')) return 'fa-file-powerpoint';
     if (fileType === 'text/plain') return 'fa-file-alt';
+    if (fileType === 'text/csv') return 'fa-file-csv';
+    if (fileType === 'application/json') return 'fa-file-code';
+    if (fileType === 'text/html' || fileType === 'text/xml') return 'fa-file-code';
+    if (fileType.includes('zip') || fileType.includes('rar') || fileType.includes('tar')) return 'fa-file-archive';
+    if (fileType.startsWith('video/')) return 'fa-file-video';
+    if (fileType.startsWith('audio/')) return 'fa-file-audio';
     return 'fa-file';
 }
 
@@ -1995,15 +2199,25 @@ function showAIToolbar(fileName, fileUrl, fileType) {
     const activePanel = document.getElementById('toolboxActive');
     const currentFileName = document.getElementById('currentFileName');
     
-    // 设置当前文件信息到全局变量
+    // 设置当前文件信息到全局变量，保留已有的content
+    if (!window.currentFileInfo) {
+        window.currentFileInfo = {};
+    }
+    
+    // 保留现有的content，更新其他属性
+    const existingContent = window.currentFileInfo.content;
     window.currentFileInfo = {
         name: fileName,
         url: fileUrl,
-        type: fileType
+        type: fileType,
+        content: existingContent || undefined  // 保留原有content
     };
     
-    // 更新文件名显示
-    currentFileName.textContent = fileName;
+    console.log('showAIToolbar设置文件信息:', {
+        fileName: fileName,
+        hasContent: !!window.currentFileInfo.content,
+        contentLength: window.currentFileInfo.content ? window.currentFileInfo.content.length : 0
+    });
     
     // 获取所有工具按钮
     const ocrBtn = document.getElementById('ocrBtn');
@@ -2011,13 +2225,54 @@ function showAIToolbar(fileName, fileUrl, fileType) {
     const summarizeBtn = document.getElementById('summarizeBtn');
     const keywordsBtn = document.getElementById('keywordsBtn');
     
+    // 扩展支持的文件类型检查
+    const aiSupportedTypes = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml',
+        'application/pdf', 'text/plain', 'text/csv',
+        // Word文档格式
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        // Excel表格格式
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        // PowerPoint演示文稿格式
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        // 其他文本格式
+        'text/html', 'text/xml', 'application/json'
+    ];
+    
+    const isSupportedForAI = aiSupportedTypes.includes(fileType);
+    
     // 根据文件类型动态显示/隐藏工具按钮
     const isImage = fileType && fileType.startsWith('image/');
     const isText = fileType && (
         fileType === 'text/plain' || 
-        fileType.includes('word') || 
-        fileType === 'application/pdf'
+        fileType === 'text/csv' ||
+        fileType === 'application/json' ||
+        fileType === 'text/html' ||
+        fileType === 'text/xml' ||
+        fileType === 'application/pdf' ||
+        // Word文档
+        fileType === 'application/msword' ||
+        fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        // Excel表格
+        fileType === 'application/vnd.ms-excel' ||
+        fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        // PowerPoint演示文稿
+        fileType === 'application/vnd.ms-powerpoint' ||
+        fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     );
+    
+    // 对于不支持AI分析的文件类型，完全隐藏AI工具箱
+    if (!isSupportedForAI) {
+        placeholder.style.display = 'block';
+        activePanel.style.display = 'none';
+        return;
+    }
+    
+    // 显示文件名
+    currentFileName.textContent = fileName;
     
     // OCR - 仅图片可用
     ocrBtn.style.display = isImage ? 'flex' : 'none';
@@ -2162,6 +2417,14 @@ async function summarizeText() {
     
     const { name, content } = window.currentFileInfo;
     
+    // 调试信息
+    console.log('总结函数调用:', {
+        fileName: name,
+        hasContent: !!content,
+        contentLength: content ? content.length : 0,
+        contentPreview: content ? content.substring(0, 100) + '...' : 'null/undefined'
+    });
+    
     // 添加加载消息并获取消息ID
     const messageId = addLoadingMessage(`正在总结文件 "${name}" 的内容，请稍候...`);
     
@@ -2296,45 +2559,25 @@ async function extractKeywords() {
 
 
 
-// 更新renderFileContent函数以适配新的工具箱
-function renderFileContent(message) {
-    if (message.type === 'file') {
-        const icon = getFileIcon(message.file.type);
-        const messageId = Date.now();
-        return `
-            <div class="file-message" data-file-id="${messageId}">
-                <i class="fas ${icon} file-icon"></i>
-                <div class="file-info">
-                    <div class="file-name">${message.file.name}</div>
-                    <div class="file-size">${message.file.size}</div>
-                </div>
-                <div class="file-actions">
-                    <a href="${message.file.url}" download="${message.file.name}" class="file-download" title="下载文件">
-                        <i class="fas fa-download"></i>
-                    </a>
-                    ${message.file.type.startsWith('image/') ? 
-                        `<button class="btn-ai-tool" onclick="showAIToolbar('${message.file.name}', '${message.file.url}', '${message.file.type}')" title="AI工具">
-                            <i class="fas fa-magic"></i>
-                        </button>` : ''
-                    }
-                </div>
-            </div>
-        `;
-    } else if (message.type === 'ocr') {
-        return `
-            <div class="ocr-result">
-                <strong>图片文字识别结果 (${message.originalFile}):</strong>
-                <div class="message-text">${message.text}</div>
-            </div>
-        `;
-    } else if (message.type === 'text') {
-        return `
-            <div class="text-content">
-                <strong>文本文件内容 (${message.originalFile}):</strong>
-                <div class="message-text"><pre>${message.text}</pre></div>
-            </div>
-        `;
+
+
+// 测试XLSX库函数
+function testXLSXLibrary() {
+    console.log('=== XLSX库测试 ===');
+    console.log('XLSX对象:', typeof XLSX);
+    if (typeof XLSX !== 'undefined') {
+        console.log('XLSX.version:', XLSX.version);
+        console.log('XLSX.utils存在:', !!XLSX.utils);
+        console.log('sheet_to_csv方法存在:', typeof XLSX.utils.sheet_to_csv);
+        console.log('sheet_to_json方法存在:', typeof XLSX.utils.sheet_to_json);
+        
+        // 在页面上也显示状态
+        showToast(`XLSX库状态: 已加载 (版本: ${XLSX.version})`, 'success');
+    } else {
+        console.error('XLSX库未加载！');
+        showToast('XLSX库未加载！请检查网络连接', 'error');
     }
+    console.log('==================');
 }
 
 // 将函数暴露到全局作用域
@@ -2343,6 +2586,7 @@ window.performOCR = performOCR;
 window.translateText = translateText;
 window.summarizeText = summarizeText;
 window.extractKeywords = extractKeywords;
+window.testXLSXLibrary = testXLSXLibrary;
 
 // 修改renderMessage函数以支持文件消息
 const originalRenderMessage = renderMessage;

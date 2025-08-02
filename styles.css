@@ -999,6 +999,33 @@ body {
     font-size: 0.75rem;
 }
 
+.file-note {
+    color: var(--warning-color);
+    font-size: 0.7rem;
+    font-style: italic;
+    margin-top: 0.25rem;
+    opacity: 0.8;
+}
+
+/* AI问题特殊样式 */
+.ai-question-message {
+    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+    border-left: 4px solid var(--primary-color);
+    border-radius: var(--radius);
+    margin-left: 0.5rem;
+}
+
+.ai-question-icon {
+    color: var(--primary-color);
+    margin-right: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.ai-question-message .message-text {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
 .file-download {
     color: var(--primary-color);
     cursor: pointer;
