@@ -176,16 +176,27 @@ const Room = mongoose.models.Room || mongoose.model('Room', roomSchema);
 
 // 内存存储（数据库不可用时的降级方案）
 const memoryStorage = {
-    rooms: new Map(), // roomId -> { messages: [], participants: Map() }
+    rooms: new Map(), // roomId -> { messages: [], participants: Map(), roomInfo: {} }
     
     getRoom(roomId) {
         if (!this.rooms.has(roomId)) {
             this.rooms.set(roomId, {
                 messages: [],
-                participants: new Map()
+                participants: new Map(),
+                roomInfo: null // 房间信息（包含创建者）
             });
         }
         return this.rooms.get(roomId);
+    },
+    
+    setRoomInfo(roomId, roomInfo) {
+        const room = this.getRoom(roomId);
+        room.roomInfo = roomInfo;
+    },
+    
+    getRoomInfo(roomId) {
+        const room = this.getRoom(roomId);
+        return room.roomInfo;
     },
     
     addMessage(roomId, message) {
@@ -404,27 +415,64 @@ io.on('connection', (socket) => {
                 });
             }
             
-            // 检查是否是房间的第一个用户（创建者）
-            const isCreator = existingParticipants.filter(p => p.status === 'online').length === 0;
+            // 检查房间是否已存在，确定是否是创建者
+            let isCreator = false;
+            let existingRoom = null;
             
-            // 如果是创建者，创建或更新房间记录
-            if (isCreator) {
+            try {
+                if (mongoose.connection.readyState === 1) {
+                    existingRoom = await Room.findOne({ roomId });
+                } else {
+                    // 内存存储模式
+                    existingRoom = memoryStorage.getRoomInfo(roomId);
+                }
+            } catch (error) {
+                console.error('查询房间信息失败:', error);
+            }
+            
+            if (!existingRoom) {
+                // 房间不存在，当前用户是创建者
+                isCreator = true;
+                const newRoomInfo = {
+                    roomId,
+                    creatorId: userId,
+                    creatorName: username,
+                    createdAt: new Date(),
+                    lastActivity: new Date()
+                };
+                
                 try {
                     if (mongoose.connection.readyState === 1) {
-                        await Room.findOneAndUpdate(
-                            { roomId },
-                            { 
-                                roomId,
-                                creatorId: userId,
-                                creatorName: username,
-                                lastActivity: new Date()
-                            },
-                            { upsert: true, new: true }
-                        );
+                        await Room.create(newRoomInfo);
+                        existingRoom = newRoomInfo;
+                    } else {
+                        // 内存存储模式
+                        memoryStorage.setRoomInfo(roomId, newRoomInfo);
+                        existingRoom = newRoomInfo;
                     }
                     console.log(`🏠 房间 ${roomId} 创建，创建者: ${username} (${userId})`);
                 } catch (error) {
                     console.error('创建房间记录失败:', error);
+                }
+            } else {
+                // 房间已存在，检查当前用户是否是原创建者
+                isCreator = existingRoom.creatorId === userId;
+                if (isCreator) {
+                    console.log(`🔄 创建者 ${username} (${userId}) 重新加入房间 ${roomId}`);
+                } else {
+                    console.log(`👥 用户 ${username} (${userId}) 加入房间 ${roomId}，创建者: ${existingRoom.creatorName} (${existingRoom.creatorId})`);
+                }
+                
+                // 更新房间活动时间
+                try {
+                    if (mongoose.connection.readyState === 1) {
+                        await Room.updateOne({ roomId }, { lastActivity: new Date() });
+                    } else {
+                        // 内存存储模式，更新房间信息
+                        existingRoom.lastActivity = new Date();
+                    }
+                } catch (error) {
+                    console.error('更新房间活动时间失败:', error);
                 }
             }
             
@@ -447,28 +495,22 @@ io.on('connection', (socket) => {
                 dataService.getParticipants(roomId)
             ]);
             
-            // 获取房间信息
-            let roomInfo = null;
-            try {
-                if (mongoose.connection.readyState === 1) {
-                    roomInfo = await Room.findOne({ roomId });
-                }
-            } catch (error) {
-                console.error('获取房间信息失败:', error);
-            }
-            
-            // 发送房间数据给用户
+            // 发送房间数据给用户（使用已获取的房间信息）
             socket.emit('roomData', {
                 messages,
                 participants: participants.map(p => ({
                     ...p,
                     status: p.socketId ? 'online' : 'offline'
                 })),
-                roomInfo: roomInfo ? {
-                    creatorId: roomInfo.creatorId,
-                    creatorName: roomInfo.creatorName,
-                    createdAt: roomInfo.createdAt
-                } : null,
+                roomInfo: existingRoom ? {
+                    creatorId: existingRoom.creatorId,
+                    creatorName: existingRoom.creatorName,
+                    createdAt: existingRoom.createdAt
+                } : (isCreator ? {
+                    creatorId: userId,
+                    creatorName: username,
+                    createdAt: new Date()
+                } : null),
                 isCreator
             });
             
@@ -606,10 +648,9 @@ io.on('connection', (socket) => {
                 const room = await Room.findOne({ roomId });
                 isCreator = room && room.creatorId === userId;
             } else {
-                // 内存存储模式下，检查是否是第一个参与者
-                const participants = await dataService.getParticipants(roomId);
-                const sortedParticipants = participants.sort((a, b) => new Date(a.joinTime) - new Date(b.joinTime));
-                isCreator = sortedParticipants.length > 0 && sortedParticipants[0].userId === userId;
+                // 内存存储模式下，检查房间信息中的创建者
+                const roomInfo = memoryStorage.getRoomInfo(roomId);
+                isCreator = roomInfo && roomInfo.creatorId === userId;
             }
             
             if (!isCreator) {
