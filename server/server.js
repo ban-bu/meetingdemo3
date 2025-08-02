@@ -157,6 +157,8 @@ const roomSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now },
     lastActivity: { type: Date, default: Date.now },
     participantCount: { type: Number, default: 0 },
+    creatorId: { type: String, required: true }, // 房间创建者ID
+    creatorName: { type: String, required: true }, // 房间创建者姓名
     settings: {
         maxParticipants: { type: Number, default: 50 },
         allowFileUpload: { type: Boolean, default: true },
@@ -402,6 +404,30 @@ io.on('connection', (socket) => {
                 });
             }
             
+            // 检查是否是房间的第一个用户（创建者）
+            const isCreator = existingParticipants.filter(p => p.status === 'online').length === 0;
+            
+            // 如果是创建者，创建或更新房间记录
+            if (isCreator) {
+                try {
+                    if (mongoose.connection.readyState === 1) {
+                        await Room.findOneAndUpdate(
+                            { roomId },
+                            { 
+                                roomId,
+                                creatorId: userId,
+                                creatorName: username,
+                                lastActivity: new Date()
+                            },
+                            { upsert: true, new: true }
+                        );
+                    }
+                    console.log(`🏠 房间 ${roomId} 创建，创建者: ${username} (${userId})`);
+                } catch (error) {
+                    console.error('创建房间记录失败:', error);
+                }
+            }
+            
             // 保存参与者信息
             const participantData = {
                 roomId,
@@ -421,13 +447,29 @@ io.on('connection', (socket) => {
                 dataService.getParticipants(roomId)
             ]);
             
+            // 获取房间信息
+            let roomInfo = null;
+            try {
+                if (mongoose.connection.readyState === 1) {
+                    roomInfo = await Room.findOne({ roomId });
+                }
+            } catch (error) {
+                console.error('获取房间信息失败:', error);
+            }
+            
             // 发送房间数据给用户
             socket.emit('roomData', {
                 messages,
                 participants: participants.map(p => ({
                     ...p,
                     status: p.socketId ? 'online' : 'offline'
-                }))
+                })),
+                roomInfo: roomInfo ? {
+                    creatorId: roomInfo.creatorId,
+                    creatorName: roomInfo.creatorName,
+                    createdAt: roomInfo.createdAt
+                } : null,
+                isCreator
             });
             
             // 通知房间其他用户新用户加入
@@ -545,6 +587,82 @@ io.on('connection', (socket) => {
             }
         } catch (error) {
             console.error('处理断开连接失败:', error);
+        }
+    });
+    
+    // 结束会议（仅创建者可操作）
+    socket.on('endMeeting', async (data) => {
+        try {
+            const { roomId, userId } = data;
+            
+            if (!roomId || !userId) {
+                socket.emit('error', '缺少必要参数');
+                return;
+            }
+            
+            // 验证是否是房间创建者
+            let isCreator = false;
+            if (mongoose.connection.readyState === 1) {
+                const room = await Room.findOne({ roomId });
+                isCreator = room && room.creatorId === userId;
+            } else {
+                // 内存存储模式下，检查是否是第一个参与者
+                const participants = await dataService.getParticipants(roomId);
+                const sortedParticipants = participants.sort((a, b) => new Date(a.joinTime) - new Date(b.joinTime));
+                isCreator = sortedParticipants.length > 0 && sortedParticipants[0].userId === userId;
+            }
+            
+            if (!isCreator) {
+                socket.emit('error', '只有会议创建者可以结束会议');
+                return;
+            }
+            
+            // 清理房间数据
+            let deletedMessages = 0;
+            let deletedParticipants = 0;
+            
+            if (mongoose.connection.readyState === 1) {
+                // MongoDB环境：删除数据库中的数据
+                const messageResult = await Message.deleteMany({ roomId });
+                const participantResult = await Participant.deleteMany({ roomId });
+                await Room.deleteOne({ roomId });
+                
+                deletedMessages = messageResult.deletedCount;
+                deletedParticipants = participantResult.deletedCount;
+            } else {
+                // 内存存储环境：清理内存数据
+                if (memoryStorage.rooms.has(roomId)) {
+                    const room = memoryStorage.rooms.get(roomId);
+                    deletedMessages = room.messages.length;
+                    deletedParticipants = room.participants.size;
+                    memoryStorage.rooms.delete(roomId);
+                }
+            }
+            
+            console.log(`🏁 会议 ${roomId} 已结束: 清理了 ${deletedMessages} 条消息, ${deletedParticipants} 个参与者`);
+            
+            // 通知房间所有用户会议已结束
+            io.to(roomId).emit('meetingEnded', {
+                message: '会议已被创建者结束，房间数据已清理',
+                deletedMessages,
+                deletedParticipants
+            });
+            
+            // 让所有用户离开房间
+            const roomSockets = await io.in(roomId).fetchSockets();
+            for (const roomSocket of roomSockets) {
+                roomSocket.leave(roomId);
+            }
+            
+            socket.emit('endMeetingSuccess', {
+                message: '会议已成功结束',
+                deletedMessages,
+                deletedParticipants
+            });
+            
+        } catch (error) {
+            console.error('结束会议失败:', error);
+            socket.emit('error', '结束会议失败: ' + error.message);
         }
     });
 });

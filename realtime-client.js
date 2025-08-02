@@ -293,6 +293,20 @@ class RealtimeClient {
             }
             showToast(error.message || '服务器错误', 'error');
         });
+        
+        // 会议结束事件
+        this.socket.on('meetingEnded', (data) => {
+            if (this.onMeetingEnded) {
+                this.onMeetingEnded(data);
+            }
+        });
+        
+        // 会议结束成功事件
+        this.socket.on('endMeetingSuccess', (data) => {
+            if (this.onEndMeetingSuccess) {
+                this.onEndMeetingSuccess(data);
+            }
+        });
     }
     
     handleConnectionError(error) {
@@ -354,6 +368,18 @@ class RealtimeClient {
         }
     }
     
+    // 结束会议（仅创建者可调用）
+    endMeeting(roomId, userId) {
+        if (this.socket && this.isConnected) {
+            this.socket.emit('endMeeting', {
+                roomId,
+                userId
+            });
+            return true;
+        }
+        return false;
+    }
+    
     // 配置回调函数
     setEventHandlers(handlers) {
         this.onMessageReceived = handlers.onMessageReceived;
@@ -364,6 +390,8 @@ class RealtimeClient {
         this.onError = handlers.onError;
         this.onRoomData = handlers.onRoomData;
         this.onUserTyping = handlers.onUserTyping;
+        this.onMeetingEnded = handlers.onMeetingEnded;
+        this.onEndMeetingSuccess = handlers.onEndMeetingSuccess;
     }
     
     // 状态查询

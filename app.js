@@ -182,6 +182,13 @@ function setupRealtimeClient() {
         onRoomData: async (data) => {
             console.log('收到房间数据:', data);
             
+            // 保存房间信息和创建者状态
+            if (data.roomInfo) {
+                window.currentRoomInfo = data.roomInfo;
+                window.isCreator = data.isCreator;
+                console.log('房间信息:', data.roomInfo, '是否创建者:', data.isCreator);
+            }
+            
             // 智能合并消息列表（优先服务器数据，但保留本地较新的消息）
             if (data.messages && data.messages.length > 0) {
                 // 如果服务器有更多消息，使用服务器数据
@@ -300,6 +307,35 @@ function setupRealtimeClient() {
             if (user) {
                 showToast(`${user.name} 离开了会议`, 'info');
             }
+        },
+        
+        onMeetingEnded: (data) => {
+            console.log('会议已结束:', data);
+            showToast(data.message, 'warning', 5000);
+            
+            // 清理本地数据
+            messages = [];
+            participants = [];
+            window.currentRoomInfo = null;
+            window.isCreator = false;
+            
+            // 清理UI
+            messagesContainer.innerHTML = '';
+            renderParticipants();
+            
+            // 清理localStorage
+            const storageKey = `meeting_${roomId}`;
+            localStorage.removeItem(storageKey);
+            
+            // 3秒后跳转到首页
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 3000);
+        },
+        
+        onEndMeetingSuccess: (data) => {
+            console.log('会议结束成功:', data);
+            showToast(data.message, 'success');
         },
         
         onUserTyping: (data) => {
@@ -1175,13 +1211,24 @@ function renderFilteredParticipants(filteredParticipants) {
         return;
     }
     
-    filteredParticipants.forEach(participant => {
+    filteredParticipants.forEach((participant, index) => {
         const participantDiv = document.createElement('div');
         participantDiv.className = 'participant';
         
         const initials = participant.name.charAt(0).toUpperCase();
         const avatarColor = getAvatarColor(participant.name);
         const isCurrentUser = participant.userId === currentUserId;
+        const isCreator = window.currentRoomInfo && participant.userId === window.currentRoomInfo.creatorId;
+        
+        // 确定显示标签
+        let userTag = '';
+        if (isCurrentUser && isCreator) {
+            userTag = '(我·创建者)';
+        } else if (isCurrentUser) {
+            userTag = '(我)';
+        } else if (isCreator) {
+            userTag = '(创建者)';
+        }
         
         participantDiv.innerHTML = `
             <div class="participant-avatar" style="background-color: ${avatarColor}">
@@ -1189,7 +1236,7 @@ function renderFilteredParticipants(filteredParticipants) {
             </div>
             <div class="participant-info">
                 <div class="participant-name">
-                    ${participant.name} ${isCurrentUser ? '(我)' : ''}
+                    ${participant.name} ${userTag}
                 </div>
                 <div class="participant-status ${participant.status}">
                     <i class="fas fa-circle"></i> ${participant.status === 'online' ? '在线' : '离线'}
@@ -1199,11 +1246,57 @@ function renderFilteredParticipants(filteredParticipants) {
         
         participantsList.appendChild(participantDiv);
     });
+    
+    // 如果当前用户是创建者，在参与者列表下方添加结束会议按钮
+    if (window.isCreator) {
+        const endMeetingDiv = document.createElement('div');
+        endMeetingDiv.className = 'creator-actions';
+        endMeetingDiv.innerHTML = `
+            <button id="endMeetingBtn" class="btn-end-meeting" onclick="endMeeting()">
+                <i class="fas fa-power-off"></i> 结束会议
+            </button>
+            <p class="creator-note">结束会议将清空所有聊天记录和文件</p>
+        `;
+        participantsList.appendChild(endMeetingDiv);
+    }
 }
 
 // 渲染参与者列表（原始函数，保持向后兼容）
 function renderParticipants() {
     renderFilteredParticipants(participants);
+}
+
+// 结束会议函数（仅创建者可调用）
+function endMeeting() {
+    if (!window.isCreator) {
+        showToast('只有会议创建者可以结束会议', 'error');
+        return;
+    }
+    
+    const confirmMessage = `确定要结束会议吗？\n\n这将会：\n• 清空所有聊天记录\n• 删除所有上传的文件\n• 移除所有参与者\n• 此操作不可撤销`;
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    // 显示结束中状态
+    const endBtn = document.getElementById('endMeetingBtn');
+    if (endBtn) {
+        endBtn.disabled = true;
+        endBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 结束中...';
+    }
+    
+    // 发送结束会议请求
+    if (isRealtimeEnabled && window.realtimeClient) {
+        window.realtimeClient.endMeeting(roomId, currentUserId);
+    } else {
+        showToast('无法连接到服务器，请检查网络', 'error');
+        // 恢复按钮状态
+        if (endBtn) {
+            endBtn.disabled = false;
+            endBtn.innerHTML = '<i class="fas fa-power-off"></i> 结束会议';
+        }
+    }
 }
 
 // 这里可以添加真实的用户加入功能，例如WebSocket连接
