@@ -146,6 +146,11 @@ function forceMobileInputVisibility() {
                 return;
             }
             
+            // 确保输入框在正常聊天时始终可见
+            if (inputContainer) {
+                inputContainer.style.display = 'flex';
+            }
+            
             if (inputContainer) {
                 // 强制设置样式
                 Object.assign(inputContainer.style, {
@@ -599,6 +604,12 @@ function ensureMobileButtonsVisibility() {
             return;
         }
         
+        // 确保输入框在正常聊天时始终可见
+        const inputContainer = document.querySelector('.input-container');
+        if (inputContainer) {
+            inputContainer.style.display = 'flex';
+        }
+        
         const inputActions = document.querySelector('.input-actions');
         const buttons = document.querySelectorAll('.btn-ask-ai, .btn-summarize, .btn-upload');
         
@@ -710,6 +721,11 @@ function init() {
                     inputContainer.style.display = 'none';
                 }
             } else {
+                // 确保输入框在正常聊天时始终可见
+                const inputContainer = document.querySelector('.input-container');
+                if (inputContainer) {
+                    inputContainer.style.display = 'flex';
+                }
                 forceMobileInputVisibility();
             }
         }

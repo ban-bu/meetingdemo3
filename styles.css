@@ -1529,6 +1529,9 @@ body {
         transform: translateZ(0);
         /* 防止被其他元素覆盖 */
         will-change: transform;
+        /* 确保在移动端始终可见 */
+        visibility: visible !important;
+        opacity: 1 !important;
     }
     
     /* 移动端输入框始终可见 */
