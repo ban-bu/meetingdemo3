@@ -239,16 +239,32 @@ function setupRealtimeClient() {
                     }
                 }
                 
-                // 处理文件消息：如果有base64数据但没有URL，创建可用的URL
-                if (message.type === 'file' && message.file && message.file.base64 && !message.file.url) {
-                    try {
-                        // 将base64转换为Blob并创建URL
-                        const response = await fetch(message.file.base64);
-                        const blob = await response.blob();
-                        message.file.url = URL.createObjectURL(blob);
-                        console.log('为接收的文件创建了可用URL');
-                    } catch (error) {
-                        console.error('处理接收的文件失败:', error);
+                // 检查是否是重复的文件消息（防止文件重复显示）
+                if (message.type === 'file') {
+                    const isDuplicateFile = messages.some(existingMsg => 
+                        existingMsg.type === 'file' && 
+                        existingMsg.file && 
+                        existingMsg.file.name === message.file.name &&
+                        existingMsg.userId === message.userId &&
+                        Math.abs(new Date() - new Date(existingMsg.time)) < 5000 // 5秒内
+                    );
+                    
+                    if (isDuplicateFile) {
+                        console.log('跳过重复的文件消息:', message.file.name);
+                        return;
+                    }
+                    
+                    // 处理文件消息：如果有base64数据但没有URL，创建可用的URL
+                    if (message.file && message.file.base64 && !message.file.url) {
+                        try {
+                            // 将base64转换为Blob并创建URL
+                            const response = await fetch(message.file.base64);
+                            const blob = await response.blob();
+                            message.file.url = URL.createObjectURL(blob);
+                            console.log('为接收的文件创建了可用URL');
+                        } catch (error) {
+                            console.error('处理接收的文件失败:', error);
+                        }
                     }
                 }
                 
@@ -1742,9 +1758,8 @@ async function processFile(file) {
         })
     };
     
-    messages.push(fileMessage);
+    // 只本地显示，不添加到messages数组（避免重复）
     renderMessage(fileMessage);
-    saveRoomData();
     
     // 发送文件消息给其他用户（包含base64数据）
     if (isRealtimeEnabled && window.realtimeClient) {
@@ -1755,7 +1770,20 @@ async function processFile(file) {
                 url: null // 移除本地URL，其他用户使用base64数据
             }
         };
-        window.realtimeClient.sendMessage(fileMessageForOthers);
+        const sent = window.realtimeClient.sendMessage(fileMessageForOthers);
+        if (sent) {
+            // 发送成功后才添加到本地消息列表
+            messages.push(fileMessage);
+            saveRoomData();
+        } else {
+            // 发送失败，仍然保存到本地
+            messages.push(fileMessage);
+            saveRoomData();
+        }
+    } else {
+        // 无网络连接时直接保存到本地
+        messages.push(fileMessage);
+        saveRoomData();
     }
     
     // 调试：文件类型信息
@@ -2138,13 +2166,6 @@ function renderFileContent(message) {
         ];
         
         const isSupportedForAI = aiSupportedTypes.includes(message.file.type);
-        
-        console.log('renderFileContent调试:', {
-            fileName: message.file.name,
-            fileType: message.file.type,
-            isSupportedForAI: isSupportedForAI,
-            supportedTypes: aiSupportedTypes
-        });
         
         return `
             <div class="file-message" data-file-id="${messageId}" data-file-name="${message.file.name}" data-file-url="${message.file.url}" data-file-type="${message.file.type}">
