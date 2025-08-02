@@ -220,7 +220,13 @@ function setupRealtimeClient() {
         },
         
         onMessageReceived: async (message) => {
-            console.log('收到新消息:', message);
+            console.log('📨 收到新消息:', {
+                type: message.type,
+                text: message.text ? message.text.substring(0, 30) + '...' : '',
+                isAIQuestion: message.isAIQuestion,
+                userId: message.userId,
+                author: message.author
+            });
             
             // 避免重复显示自己发送的消息
             if (message.userId !== currentUserId) {
@@ -707,7 +713,13 @@ function addMessage(type, text, author = 'AI助手', userId = null, shouldBroadc
     
     // 通过WebSocket发送AI消息给其他用户（只有本地产生的消息才发送）
     if (shouldBroadcast && isRealtimeEnabled && window.realtimeClient) {
-
+        console.log('🔄 发送消息到其他用户:', {
+            type: message.type,
+            text: message.text.substring(0, 30) + '...',
+            isAIQuestion: message.isAIQuestion,
+            userId: message.userId,
+            author: message.author
+        });
         const sent = window.realtimeClient.sendMessage(message);
         if (!sent) {
             // WebSocket发送失败，使用本地存储备份

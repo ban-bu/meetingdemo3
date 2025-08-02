@@ -478,7 +478,14 @@ io.on('connection', (socket) => {
             // 更新参与者最后活跃时间
             await dataService.updateParticipant(roomId, userId, { lastSeen: new Date() });
             
-            console.log(`房间 ${roomId} 收到新消息:`, message.text?.substring(0, 50) + '...');
+            console.log(`🏠 房间 ${roomId} 收到新消息:`, {
+                type: message.type,
+                text: message.text?.substring(0, 30) + '...',
+                isAIQuestion: message.isAIQuestion,
+                originUserId: message.originUserId,
+                userId: message.userId,
+                author: message.author
+            });
             
         } catch (error) {
             console.error('发送消息失败:', error);
