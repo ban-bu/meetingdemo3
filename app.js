@@ -235,9 +235,10 @@ function forceMobileInputVisibility() {
             
             if (chatContainer) {
                 Object.assign(chatContainer.style, {
-                    paddingBottom: '250px', // 增加底部padding，为输入框留出更多空间
-                    height: 'calc(100vh - 250px)',
-                    overflow: 'hidden'
+                    height: 'calc(100vh - 200px)',
+                    overflow: 'hidden',
+                    position: 'relative',
+                    paddingBottom: '0' // 移除底部padding，让输入框完全独立
                 });
             }
             
@@ -283,9 +284,6 @@ function forceMobileInputVisibility() {
                 inputContainer.style.position = 'fixed';
                 inputContainer.style.bottom = '0';
                 inputContainer.style.zIndex = '9999';
-                
-                // 显示用户提示
-                showInputBoxHint();
             }
         }
         
@@ -343,55 +341,10 @@ function forceMobileInputVisibility() {
     }, 1000);
 }
 
-// 显示输入框提示
+// 显示输入框提示（已禁用）
 function showInputBoxHint() {
-    // 移除已存在的提示
-    const existingHint = document.getElementById('inputBoxHint');
-    if (existingHint) {
-        existingHint.remove();
-    }
-    
-    const hint = document.createElement('div');
-    hint.id = 'inputBoxHint';
-    hint.innerHTML = `
-        <div style="
-            position: fixed;
-            bottom: 120px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #ff4444;
-            color: white;
-            padding: 10px 15px;
-            border-radius: 8px;
-            font-size: 14px;
-            z-index: 10000;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            text-align: center;
-            max-width: 90%;
-        ">
-            <div style="margin-bottom: 8px;">💬 输入框可能被隐藏了</div>
-            <button onclick="forceMobileInputVisibility(); this.parentElement.remove();" 
-                    style="
-                        background: white;
-                        color: #ff4444;
-                        border: none;
-                        padding: 5px 10px;
-                        border-radius: 4px;
-                        font-size: 12px;
-                        cursor: pointer;
-                    ">
-                点击修复
-            </button>
-        </div>
-    `;
-    document.body.appendChild(hint);
-    
-    // 5秒后自动移除提示
-    setTimeout(() => {
-        if (hint.parentElement) {
-            hint.remove();
-        }
-    }, 5000);
+    // 此功能已禁用，不再显示修复按钮
+    return;
 }
         
             // 再次检查，确保在页面完全加载后输入框可见
@@ -1108,10 +1061,10 @@ function showTypingIndicator(data) {
 
 // 滚动到底部
 function scrollToBottom() {
-    // 在移动端，确保滚动到底部时留出足够空间
+    // 在移动端，由于输入框独立布局，直接滚动到底部即可
     if (window.innerWidth <= 768) {
         setTimeout(() => {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight + 100; // 额外滚动100px确保完全可见
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }, 100);
     } else {
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
