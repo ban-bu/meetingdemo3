@@ -116,6 +116,75 @@ function initMobileSupport() {
     
     // 监听窗口大小变化
     window.addEventListener('resize', handleResize);
+    
+    // 图标加载优化
+    optimizeIconLoading();
+}
+
+// 优化图标加载
+function optimizeIconLoading() {
+    // 检测Font Awesome是否加载成功
+    setTimeout(() => {
+        const testIcon = document.createElement('i');
+        testIcon.className = 'fas fa-check';
+        testIcon.style.display = 'none';
+        document.body.appendChild(testIcon);
+        
+        const computedStyle = window.getComputedStyle(testIcon, '::before');
+        const content = computedStyle.content;
+        
+        if (content === 'none' || content === '') {
+            console.log('Font Awesome 加载失败，使用备用图标');
+            useFallbackIcons();
+        } else {
+            console.log('Font Awesome 加载成功');
+        }
+        
+        document.body.removeChild(testIcon);
+    }, 2000);
+}
+
+// 备用图标方案
+function useFallbackIcons() {
+    // 替换常用图标为Unicode字符或SVG
+    const iconReplacements = {
+        'fas fa-comments': '💬',
+        'fas fa-user-friends': '👥',
+        'fas fa-robot': '🤖',
+        'fas fa-search': '🔍',
+        'fas fa-times': '✕',
+        'fas fa-file': '📄',
+        'fas fa-upload': '📤',
+        'fas fa-send': '📤',
+        'fas fa-copy': '📋',
+        'fas fa-wifi': '📶',
+        'fas fa-circle': '●',
+        'fas fa-eye': '👁️',
+        'fas fa-language': '🌐',
+        'fas fa-file-text': '📝',
+        'fas fa-key': '🔑',
+        'fas fa-magic': '✨',
+        'fas fa-spinner': '⏳',
+        'fas fa-power-off': '⏻',
+        'fas fa-clipboard-list': '📋',
+        'fas fa-info-circle': 'ℹ️',
+        'fas fa-check': '✓',
+        'fas fa-exclamation-triangle': '⚠️',
+        'fas fa-download': '📥'
+    };
+    
+    // 替换所有图标
+    Object.keys(iconReplacements).forEach(iconClass => {
+        const className = iconClass.replace('fas fa-', '');
+        const elements = document.querySelectorAll(`.${className}`);
+        elements.forEach(element => {
+            if (element.tagName === 'I') {
+                element.textContent = iconReplacements[iconClass];
+                element.style.fontFamily = 'inherit';
+                element.style.fontStyle = 'normal';
+            }
+        });
+    });
 }
 
 function switchMobileTab(tab) {
