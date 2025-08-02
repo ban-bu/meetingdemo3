@@ -136,7 +136,7 @@ function forceMobileInputVisibility() {
             
             // 检查是否在欢迎页面（用户名模态框显示时）
             const usernameModal = document.getElementById('usernameModal');
-            const isOnWelcomePage = usernameModal && usernameModal.style.display !== 'none';
+            const isOnWelcomePage = usernameModal && (usernameModal.style.display === 'block' || usernameModal.style.display === 'flex');
             
             if (isOnWelcomePage) {
                 // 在欢迎页面时隐藏输入框
@@ -235,8 +235,8 @@ function forceMobileInputVisibility() {
             
             if (chatContainer) {
                 Object.assign(chatContainer.style, {
-                    paddingBottom: '200px', // 增加底部padding，为输入框留出更多空间
-                    height: 'calc(100vh - 200px)',
+                    paddingBottom: '250px', // 增加底部padding，为输入框留出更多空间
+                    height: 'calc(100vh - 250px)',
                     overflow: 'hidden'
                 });
             }
@@ -263,7 +263,7 @@ function forceMobileInputVisibility() {
         
         // 检查是否在欢迎页面
         const usernameModal = document.getElementById('usernameModal');
-        const isOnWelcomePage = usernameModal && usernameModal.style.display !== 'none';
+        const isOnWelcomePage = usernameModal && (usernameModal.style.display === 'block' || usernameModal.style.display === 'flex');
         
         if (isOnWelcomePage) {
             // 在欢迎页面时隐藏输入框
@@ -635,7 +635,7 @@ function ensureMobileButtonsVisibility() {
     if (window.innerWidth <= 768) {
         // 检查是否在欢迎页面
         const usernameModal = document.getElementById('usernameModal');
-        const isOnWelcomePage = usernameModal && usernameModal.style.display !== 'none';
+        const isOnWelcomePage = usernameModal && (usernameModal.style.display === 'block' || usernameModal.style.display === 'flex');
         
         if (isOnWelcomePage) {
             // 在欢迎页面时隐藏输入框
@@ -747,7 +747,18 @@ function init() {
     // 确保移动端按钮可见性
     setTimeout(() => {
         if (window.innerWidth <= 768) {
-            forceMobileInputVisibility();
+            // 检查是否在欢迎页面，如果是则隐藏输入框
+            const usernameModal = document.getElementById('usernameModal');
+            const isOnWelcomePage = usernameModal && (usernameModal.style.display === 'block' || usernameModal.style.display === 'flex');
+            
+            if (isOnWelcomePage) {
+                const inputContainer = document.querySelector('.input-container');
+                if (inputContainer) {
+                    inputContainer.style.display = 'none';
+                }
+            } else {
+                forceMobileInputVisibility();
+            }
         }
     }, 2000);
     
@@ -1097,7 +1108,14 @@ function showTypingIndicator(data) {
 
 // 滚动到底部
 function scrollToBottom() {
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    // 在移动端，确保滚动到底部时留出足够空间
+    if (window.innerWidth <= 768) {
+        setTimeout(() => {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight + 100; // 额外滚动100px确保完全可见
+        }, 100);
+    } else {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
 }
 
 // 生成或获取房间ID
@@ -1119,6 +1137,7 @@ function generateRoomId() {
 // 显示用户名设置模态框
 function showUsernameModal() {
     usernameModal.style.display = 'block';
+    document.body.classList.add('modal-open'); // 添加modal-open类
     
     // 预填房间号
     const urlParams = new URLSearchParams(window.location.search);
@@ -1331,6 +1350,7 @@ function setUsername() {
 // 关闭用户名设置模态框
 function closeUsernameModal() {
     usernameModal.style.display = 'none';
+    document.body.classList.remove('modal-open'); // 移除modal-open类
     
     // 在移动端，确保输入框在用户加入房间后显示
     if (window.innerWidth <= 768) {

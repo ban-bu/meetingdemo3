@@ -1531,6 +1531,11 @@ body {
         will-change: transform;
     }
     
+    /* 欢迎页面时隐藏输入框 */
+    .modal-open .input-container {
+        display: none !important;
+    }
+    
     /* 兼容不同浏览器的输入框样式 */
     .input-wrapper {
         display: flex !important;
@@ -1632,8 +1637,8 @@ body {
     
     /* 确保聊天容器为输入框留出空间 */
     .chat-container {
-        padding-bottom: 200px !important;
-        height: calc(100vh - 200px) !important;
+        padding-bottom: 250px !important;
+        height: calc(100vh - 250px) !important;
         overflow: hidden;
     }
     
