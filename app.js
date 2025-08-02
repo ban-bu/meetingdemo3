@@ -2139,6 +2139,13 @@ function renderFileContent(message) {
         
         const isSupportedForAI = aiSupportedTypes.includes(message.file.type);
         
+        console.log('renderFileContent调试:', {
+            fileName: message.file.name,
+            fileType: message.file.type,
+            isSupportedForAI: isSupportedForAI,
+            supportedTypes: aiSupportedTypes
+        });
+        
         return `
             <div class="file-message" data-file-id="${messageId}" data-file-name="${message.file.name}" data-file-url="${message.file.url}" data-file-type="${message.file.type}">
                 <i class="fas ${icon} file-icon"></i>
