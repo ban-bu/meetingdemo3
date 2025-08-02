@@ -1632,8 +1632,8 @@ body {
     
     /* 确保聊天容器为输入框留出空间 */
     .chat-container {
-        padding-bottom: 120px !important;
-        height: calc(100vh - 120px) !important;
+        padding-bottom: 200px !important;
+        height: calc(100vh - 200px) !important;
         overflow: hidden;
     }
     

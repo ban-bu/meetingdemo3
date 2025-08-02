@@ -134,6 +134,18 @@ function forceMobileInputVisibility() {
             const messageInput = document.getElementById('messageInput');
             const chatContainer = document.querySelector('.chat-container');
             
+            // 检查是否在欢迎页面（用户名模态框显示时）
+            const usernameModal = document.getElementById('usernameModal');
+            const isOnWelcomePage = usernameModal && usernameModal.style.display !== 'none';
+            
+            if (isOnWelcomePage) {
+                // 在欢迎页面时隐藏输入框
+                if (inputContainer) {
+                    inputContainer.style.display = 'none';
+                }
+                return;
+            }
+            
             if (inputContainer) {
                 // 强制设置样式
                 Object.assign(inputContainer.style, {
@@ -223,8 +235,8 @@ function forceMobileInputVisibility() {
             
             if (chatContainer) {
                 Object.assign(chatContainer.style, {
-                    paddingBottom: '120px',
-                    height: 'calc(100vh - 120px)',
+                    paddingBottom: '200px', // 增加底部padding，为输入框留出更多空间
+                    height: 'calc(100vh - 200px)',
                     overflow: 'hidden'
                 });
             }
@@ -248,6 +260,18 @@ function forceMobileInputVisibility() {
         const inputContainer = document.querySelector('.input-container');
         const inputActions = document.querySelector('.input-actions');
         const buttons = document.querySelectorAll('.btn-ask-ai, .btn-summarize, .btn-upload');
+        
+        // 检查是否在欢迎页面
+        const usernameModal = document.getElementById('usernameModal');
+        const isOnWelcomePage = usernameModal && usernameModal.style.display !== 'none';
+        
+        if (isOnWelcomePage) {
+            // 在欢迎页面时隐藏输入框
+            if (inputContainer) {
+                inputContainer.style.display = 'none';
+            }
+            return;
+        }
         
         if (inputContainer) {
             const rect = inputContainer.getBoundingClientRect();
@@ -609,6 +633,19 @@ function initTouchGestures() {
 // 确保移动端按钮可见性
 function ensureMobileButtonsVisibility() {
     if (window.innerWidth <= 768) {
+        // 检查是否在欢迎页面
+        const usernameModal = document.getElementById('usernameModal');
+        const isOnWelcomePage = usernameModal && usernameModal.style.display !== 'none';
+        
+        if (isOnWelcomePage) {
+            // 在欢迎页面时隐藏输入框
+            const inputContainer = document.querySelector('.input-container');
+            if (inputContainer) {
+                inputContainer.style.display = 'none';
+            }
+            return;
+        }
+        
         const inputActions = document.querySelector('.input-actions');
         const buttons = document.querySelectorAll('.btn-ask-ai, .btn-summarize, .btn-upload');
         
@@ -1278,11 +1315,33 @@ function setUsername() {
     }
     
     usernameModal.style.display = 'none';
+    
+    // 在移动端，确保输入框在用户加入房间后显示
+    if (window.innerWidth <= 768) {
+        setTimeout(() => {
+            const inputContainer = document.querySelector('.input-container');
+            if (inputContainer) {
+                inputContainer.style.display = 'flex';
+                forceMobileInputVisibility();
+            }
+        }, 500);
+    }
 }
 
 // 关闭用户名设置模态框
 function closeUsernameModal() {
     usernameModal.style.display = 'none';
+    
+    // 在移动端，确保输入框在用户加入房间后显示
+    if (window.innerWidth <= 768) {
+        setTimeout(() => {
+            const inputContainer = document.querySelector('.input-container');
+            if (inputContainer) {
+                inputContainer.style.display = 'flex';
+                forceMobileInputVisibility();
+            }
+        }, 500);
+    }
 }
 
 // 创建新房间
