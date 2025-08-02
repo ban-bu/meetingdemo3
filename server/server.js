@@ -37,10 +37,15 @@ app.use(cors({
         // 允许没有origin的请求（如移动应用）
         if (!origin) return callback(null, true);
         
+        // 如果设置为*，允许所有来源
+        if (allowedOrigins.includes('*')) {
+            return callback(null, true);
+        }
+        
         // 检查是否在允许列表中
         const isAllowed = allowedOrigins.some(allowedOrigin => {
             if (allowedOrigin.includes('*')) {
-                const regex = new RegExp(allowedOrigin.replace('*', '.*'));
+                const regex = new RegExp(allowedOrigin.replace(/\*/g, '.*'));
                 return regex.test(origin);
             }
             return allowedOrigin === origin;
@@ -49,6 +54,7 @@ app.use(cors({
         if (isAllowed || process.env.NODE_ENV === 'development') {
             callback(null, true);
         } else {
+            console.log('CORS blocked origin:', origin, 'Allowed origins:', allowedOrigins);
             callback(new Error('Not allowed by CORS'));
         }
     },
