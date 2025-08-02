@@ -1,0 +1,2357 @@
+// 配置
+const CONFIG = {
+    API_KEY: "sk-lNVAREVHjj386FDCd9McOL7k66DZCUkTp6IbV0u9970qqdlg",
+    API_URL: "https://api.deepbricks.ai/v1/chat/completions",
+    MODEL: "GPT-4.1-mini"
+};
+
+// 全局状态
+let messages = [];
+let participants = [];
+let isAIProcessing = false;
+let currentUsername = '';
+let roomId = '';
+let currentUserId = '';
+
+// 基于用户名生成一致的用户ID
+function generateUserIdFromUsername(username) {
+    if (!username) return 'user-' + Math.random().toString(36).substr(2, 9);
+    
+    // 使用简单的哈希函数基于用户名生成一致的ID
+    let hash = 0;
+    for (let i = 0; i < username.length; i++) {
+        const char = username.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // 转换为32位整数
+    }
+    
+    // 转换为正数并生成用户ID
+    const userId = 'user-' + Math.abs(hash).toString(36);
+    return userId;
+}
+
+// 实时通信状态
+let isRealtimeEnabled = false;
+let typingTimeout = null;
+
+// DOM元素
+const messagesContainer = document.getElementById('messagesContainer');
+const messageInput = document.getElementById('messageInput');
+const sendButton = document.getElementById('sendButton');
+const participantsList = document.getElementById('participantsList');
+const summaryContent = document.getElementById('summaryContent');
+const aiStatus = document.getElementById('aiStatus');
+const connectionStatus = document.getElementById('connectionStatus');
+const askAIModal = document.getElementById('askAIModal');
+const aiQuestionInput = document.getElementById('aiQuestionInput');
+const usernameModal = document.getElementById('usernameModal');
+const usernameInput = document.getElementById('usernameInput');
+const roomInput = document.getElementById('roomInput');
+
+// 初始化
+function init() {
+    // 从URL获取房间号，如果没有则在设置用户名时处理
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlRoomId = urlParams.get('room');
+    if (urlRoomId) {
+        roomId = urlRoomId;
+        document.getElementById('roomId').textContent = `房间: ${roomId}`;
+    }
+    
+    setupEventListeners();
+    setupRealtimeClient();
+    
+
+    
+    showUsernameModal();
+    registerServiceWorker();
+    setupOfflineIndicator();
+    
+    // 监听localStorage变化，实现跨标签页同步
+    window.addEventListener('storage', handleStorageChange);
+    
+    // 定期同步参与者在线状态
+    setInterval(syncParticipantsStatus, 30000);
+    
+    // Hugging Face环境提示
+    if (window.location.hostname.includes('huggingface.co')) {
+        // 显示侧边栏提示
+        const hfNotice = document.getElementById('hfNotice');
+        if (hfNotice) {
+            hfNotice.style.display = 'block';
+        }
+        
+        setTimeout(() => {
+            showToast('💡 提示：现在支持多端实时聊天！配置WebSocket服务器后即可使用', 'info');
+        }, 3000);
+    }
+}
+
+// 设置事件监听器
+function setupEventListeners() {
+    messageInput.addEventListener('keydown', handleKeyDown);
+    messageInput.addEventListener('input', autoResizeTextarea);
+    
+    // 实时输入提示
+    messageInput.addEventListener('input', handleTypingIndicator);
+    
+    // 用户名输入事件
+    usernameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            setUsername();
+        }
+    });
+    
+    // 点击外部关闭模态框
+    askAIModal.addEventListener('click', (e) => {
+        if (e.target === askAIModal) {
+            closeAskAIModal();
+        }
+    });
+    
+    // 参与者搜索功能
+    const participantsSearch = document.getElementById('participantsSearch');
+    if (participantsSearch) {
+        participantsSearch.addEventListener('input', (e) => {
+            filterParticipants(e.target.value);
+        });
+    }
+    
+    // 聊天记录搜索功能
+    const chatSearchInput = document.getElementById('chatSearchInput');
+    if (chatSearchInput) {
+        chatSearchInput.addEventListener('input', (e) => {
+            searchChatMessages(e.target.value);
+        });
+    }
+}
+
+// 处理键盘事件
+function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+}
+
+// 处理输入提示
+function handleTypingIndicator() {
+    if (!isRealtimeEnabled || !window.realtimeClient) return;
+    
+    // 发送正在输入信号
+    window.realtimeClient.sendTypingIndicator(true);
+    
+    // 清除之前的定时器
+    if (typingTimeout) {
+        clearTimeout(typingTimeout);
+    }
+    
+    // 2秒后停止输入提示
+    typingTimeout = setTimeout(() => {
+        if (window.realtimeClient) {
+            window.realtimeClient.sendTypingIndicator(false);
+        }
+    }, 2000);
+}
+
+// 自动调整文本框大小
+function autoResizeTextarea() {
+    messageInput.style.height = 'auto';
+    messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+}
+
+// 设置实时客户端
+function setupRealtimeClient() {
+    if (!window.realtimeClient) {
+        console.warn('实时客户端未加载');
+        return;
+    }
+    
+    // 设置事件处理器
+    window.realtimeClient.setEventHandlers({
+        onConnectionChange: (isConnected) => {
+            isRealtimeEnabled = isConnected;
+            updateConnectionStatus(isConnected);
+        },
+        
+        onRoomData: async (data) => {
+            console.log('收到房间数据:', data);
+            
+            // 智能合并消息列表（优先服务器数据，但保留本地较新的消息）
+            if (data.messages && data.messages.length > 0) {
+                // 如果服务器有更多消息，使用服务器数据
+                if (data.messages.length > messages.length) {
+                    messagesContainer.innerHTML = '';
+                    messages = data.messages;
+                    
+                    // 处理文件消息：恢复文件URL
+                    for (const msg of messages) {
+                        if (msg.type === 'file' && msg.file && msg.file.base64 && !msg.file.url) {
+                            try {
+                                // 将base64转换为Blob并创建URL
+                                const response = await fetch(msg.file.base64);
+                                const blob = await response.blob();
+                                msg.file.url = URL.createObjectURL(blob);
+                            } catch (error) {
+                                console.error('恢复文件URL失败:', error);
+                            }
+                        }
+                    }
+                    
+                    messages.forEach(msg => renderMessage(msg));
+                    scrollToBottom();
+                    // 同步到本地存储
+                    saveRoomData();
+                    showToast('已同步服务器数据', 'success');
+                }
+            }
+            
+            // 智能合并参与者列表
+            if (data.participants) {
+                // 合并参与者，保持当前用户信息
+                const serverParticipants = data.participants;
+                const currentUserExists = serverParticipants.find(p => p.userId === currentUserId);
+                
+                if (!currentUserExists && currentUsername) {
+                    // 添加当前用户到列表
+                    serverParticipants.push({
+                        userId: currentUserId,
+                        name: currentUsername,
+                        status: 'online',
+                        joinTime: Date.now(),
+                        lastSeen: Date.now()
+                    });
+                }
+                
+                participants = serverParticipants;
+                renderParticipants();
+            }
+        },
+        
+        onMessageReceived: async (message) => {
+            console.log('收到新消息:', message);
+            
+            // 避免重复显示自己发送的消息
+            if (message.userId !== currentUserId) {
+                // 检查是否是重复的AI消息（防止AI回复重复显示）
+                if (message.userId === 'ai-assistant') {
+                    // 检查是否有相同内容和时间的AI消息（防止重复）
+                    const isDuplicate = messages.some(existingMsg => 
+                        existingMsg.type === 'ai' && 
+                        existingMsg.author === 'AI助手' &&
+                        existingMsg.text === message.text &&
+                        existingMsg.time === message.time
+                    );
+                    
+                    if (isDuplicate) {
+                        console.log('跳过重复的AI消息');
+                        return;
+                    }
+                }
+                
+                // 处理文件消息：如果有base64数据但没有URL，创建可用的URL
+                if (message.type === 'file' && message.file && message.file.base64 && !message.file.url) {
+                    try {
+                        // 将base64转换为Blob并创建URL
+                        const response = await fetch(message.file.base64);
+                        const blob = await response.blob();
+                        message.file.url = URL.createObjectURL(blob);
+                        console.log('为接收的文件创建了可用URL');
+                    } catch (error) {
+                        console.error('处理接收的文件失败:', error);
+                    }
+                }
+                
+                messages.push(message);
+                renderMessage(message);
+                scrollToBottom();
+                
+                // 同时保存到本地存储作为备份
+                saveRoomData();
+            }
+        },
+        
+        onParticipantsUpdate: (participantsList) => {
+            console.log('参与者列表更新:', participantsList);
+            participants = participantsList;
+            renderParticipants();
+        },
+        
+        onUserJoined: (user) => {
+            console.log('用户加入:', user);
+            showToast(`${user.name} 加入了会议`, 'info');
+        },
+        
+        onUserLeft: (data) => {
+            console.log('用户离开:', data);
+            const user = participants.find(p => p.userId === data.userId);
+            if (user) {
+                showToast(`${user.name} 离开了会议`, 'info');
+            }
+        },
+        
+        onUserTyping: (data) => {
+            if (data.userId !== currentUserId) {
+                showTypingIndicator(data);
+            }
+        },
+        
+        onError: (error) => {
+            console.error('实时通信错误:', error);
+            showToast(`连接错误: ${error}`, 'error');
+        }
+    });
+}
+
+// 更新连接状态显示
+function updateConnectionStatus(isConnected) {
+    if (!connectionStatus) return;
+    
+    if (isConnected) {
+        connectionStatus.innerHTML = '<i class="fas fa-wifi"></i> 实时连接';
+        connectionStatus.style.color = 'var(--success-color)';
+        connectionStatus.title = '实时聊天已启用';
+    } else {
+        connectionStatus.innerHTML = '<i class="fas fa-wifi" style="opacity: 0.5;"></i> 本地模式';
+        connectionStatus.style.color = 'var(--warning-color)';
+        connectionStatus.title = '使用本地存储，无法多端同步';
+    }
+}
+
+// 显示输入提示
+function showTypingIndicator(data) {
+    const indicatorId = `typing-${data.userId}`;
+    let indicator = document.getElementById(indicatorId);
+    
+    if (data.isTyping) {
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = indicatorId;
+            indicator.className = 'typing-indicator-message';
+            indicator.innerHTML = `
+                <div class="message-avatar" style="background-color: ${getAvatarColor(data.username)}">
+                    ${data.username.charAt(0).toUpperCase()}
+                </div>
+                <div class="typing-content">
+                    <span>${data.username} 正在输入...</span>
+                    <div class="typing-dots">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+            `;
+            messagesContainer.appendChild(indicator);
+            scrollToBottom();
+        }
+    } else {
+        if (indicator) {
+            indicator.remove();
+        }
+    }
+    
+    // 5秒后自动移除提示
+    setTimeout(() => {
+        const indicator = document.getElementById(indicatorId);
+        if (indicator) {
+            indicator.remove();
+        }
+    }, 5000);
+}
+
+// 滚动到底部
+function scrollToBottom() {
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// 生成或获取房间ID
+function generateRoomId() {
+    const urlParams = new URLSearchParams(window.location.search);
+    let roomId = urlParams.get('room');
+    
+    if (!roomId) {
+        roomId = 'meeting-' + Math.random().toString(36).substr(2, 6);
+        // 更新URL但不刷新页面
+        const newUrl = window.location.pathname + '?room=' + roomId;
+        window.history.replaceState({path: newUrl}, '', newUrl);
+    }
+    
+    document.getElementById('roomId').textContent = `房间: ${roomId}`;
+    return roomId;
+}
+
+// 显示用户名设置模态框
+function showUsernameModal() {
+    usernameModal.style.display = 'block';
+    
+    // 预填房间号
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlRoomId = urlParams.get('room');
+    if (urlRoomId) {
+        roomInput.value = urlRoomId;
+    }
+    
+    usernameInput.focus();
+}
+
+// 加载房间数据
+function loadRoomData() {
+    // 从localStorage加载房间数据
+    const storageKey = `meeting_${roomId}`;
+    const savedData = localStorage.getItem(storageKey);
+    
+    if (savedData) {
+        const data = JSON.parse(savedData);
+        messages = data.messages || [];
+        participants = data.participants || [];
+        
+        // 处理文件消息：恢复文件URL
+        messages.forEach(async (msg) => {
+            if (msg.type === 'file' && msg.file && msg.file.base64 && !msg.file.url) {
+                try {
+                    // 将base64转换为Blob并创建URL
+                    const response = await fetch(msg.file.base64);
+                    const blob = await response.blob();
+                    msg.file.url = URL.createObjectURL(blob);
+                } catch (error) {
+                    console.error('恢复文件URL失败:', error);
+                }
+            }
+        });
+        
+        // 渲染已存在的消息
+        messages.forEach(msg => renderMessage(msg));
+        renderParticipants();
+    }
+    
+    // 添加当前用户到参与者列表
+    if (currentUsername) {
+        addCurrentUserToParticipants();
+    }
+}
+
+// 保存房间数据到localStorage
+function saveRoomData() {
+    const storageKey = `meeting_${roomId}`;
+    const data = {
+        messages: messages,
+        participants: participants,
+        lastUpdate: Date.now()
+    };
+    localStorage.setItem(storageKey, JSON.stringify(data));
+}
+
+// 处理localStorage变化事件
+function handleStorageChange(e) {
+    if (e.key === `meeting_${roomId}` && e.newValue) {
+        const data = JSON.parse(e.newValue);
+        
+        // 更新消息（避免重复）
+        if (data.messages && data.messages.length > messages.length) {
+            const newMessages = data.messages.slice(messages.length);
+            newMessages.forEach(msg => {
+                messages.push(msg);
+                renderMessage(msg);
+            });
+        }
+        
+        // 更新参与者列表
+        if (data.participants) {
+            participants = data.participants;
+            renderParticipants();
+        }
+    }
+}
+
+// 添加当前用户到参与者列表
+function addCurrentUserToParticipants() {
+    const existingUser = participants.find(p => p.id === currentUserId);
+    if (!existingUser && currentUsername) {
+        participants.push({
+            id: currentUserId,
+            name: currentUsername,
+            status: 'online',
+            joinTime: Date.now()
+        });
+        saveRoomData();
+        renderParticipants();
+    }
+}
+
+// 更新消息显示中的"(我)"标识
+function updateMessagesOwnership() {
+    // 重新渲染所有消息以更新"(我)"标识
+    messagesContainer.innerHTML = '';
+    messages.forEach(msg => renderMessage(msg));
+}
+
+// 同步参与者在线状态
+function syncParticipantsStatus() {
+    if (currentUsername) {
+        addCurrentUserToParticipants();
+    }
+}
+
+
+
+
+
+
+
+
+
+// 自动提醒用户保存会议数据
+function remindToSaveData() {
+    if (messages.length >= 5 && window.location.hostname.includes('huggingface.co')) {
+        showToast('💾 数据已自动保存到服务器', 'info');
+    }
+}
+
+// 设置用户名和房间号
+function setUsername() {
+    const username = usernameInput.value.trim();
+    const customRoomId = roomInput.value.trim();
+    
+    if (!username) {
+        alert('请输入您的姓名');
+        return;
+    }
+    
+    // 处理房间号
+    if (customRoomId) {
+        roomId = customRoomId;
+        // 更新URL
+        const newUrl = window.location.pathname + '?room=' + roomId;
+        window.history.replaceState({path: newUrl}, '', newUrl);
+        document.getElementById('roomId').textContent = `房间: ${roomId}`;
+    } else if (!roomId) {
+        // 如果没有自定义房间号且roomId未设置，生成新的
+        roomId = 'meeting-' + Math.random().toString(36).substr(2, 6);
+        const newUrl = window.location.pathname + '?room=' + roomId;
+        window.history.replaceState({path: newUrl}, '', newUrl);
+        document.getElementById('roomId').textContent = `房间: ${roomId}`;
+    }
+    
+    // 设置当前用户信息
+    currentUsername = username;
+    // 基于用户名生成一致的用户ID
+    currentUserId = generateUserIdFromUsername(username);
+    
+    // 尝试通过WebSocket加入房间
+    if (window.realtimeClient && !window.realtimeClient.localMode) {
+        // 先加载本地数据作为备用
+        loadRoomData();
+        
+        // 然后尝试连接WebSocket获取最新数据
+        window.realtimeClient.joinRoom(roomId, currentUserId, username);
+        showToast('正在连接实时聊天...', 'info');
+    } else {
+        // 降级到本地模式
+        loadRoomData();
+        
+        // 检查是否已有相同用户名的用户
+        const existingUser = participants.find(p => p.name === username);
+        if (existingUser) {
+            // 使用现有的用户ID
+            currentUserId = existingUser.id;
+            currentUsername = username;
+            
+            // 更新用户状态为在线
+            existingUser.status = 'online';
+            existingUser.lastSeen = Date.now();
+            
+            // 更新消息显示中的"(我)"标识
+            updateMessagesOwnership();
+        } else {
+            // 添加新用户到参与者列表
+            participants.push({
+                id: currentUserId,
+                name: currentUsername,
+                status: 'online',
+                joinTime: Date.now(),
+                lastSeen: Date.now()
+            });
+        }
+        
+        // 保存房间数据
+        saveRoomData();
+        renderParticipants();
+    }
+    
+    usernameModal.style.display = 'none';
+}
+
+// 关闭用户名设置模态框
+function closeUsernameModal() {
+    usernameModal.style.display = 'none';
+}
+
+// 创建新房间
+function createNewRoom() {
+    roomInput.value = ''; // 清空房间号输入
+    
+    // 强制重置房间ID，创建全新的房间
+    roomId = 'meeting-' + Math.random().toString(36).substr(2, 6);
+    const newUrl = window.location.pathname + '?room=' + roomId;
+    window.history.replaceState({path: newUrl}, '', newUrl);
+    document.getElementById('roomId').textContent = `房间: ${roomId}`;
+    
+    // 重置当前会话状态
+    messages = [];
+    participants = [];
+    
+    // 清空消息容器
+    messagesContainer.innerHTML = '';
+    
+    // 重置总结内容
+    summaryContent.innerHTML = '<p class="empty-summary">讨论开始后，AI将为您生成智能总结...</p>';
+    
+    // 如果已设置用户名，直接加入新房间
+    if (currentUsername) {
+        usernameModal.style.display = 'none';
+        
+        // 直接将当前用户添加到新房间的参与者列表
+        participants.push({
+            id: currentUserId,
+            name: currentUsername,
+            status: 'online',
+            joinTime: Date.now(),
+            lastSeen: Date.now()
+        });
+        
+        // 保存房间数据并渲染参与者
+        saveRoomData();
+        renderParticipants();
+    } else {
+        // 否则显示用户名设置对话框
+        setUsername();
+    }
+}
+
+// 发送消息
+async function sendMessage() {
+    const text = messageInput.value.trim();
+    if (!text || isAIProcessing || !currentUsername) return;
+
+    // 创建消息对象
+    const message = {
+        type: 'user',
+        text: text,
+        author: currentUsername,
+        userId: currentUserId,
+        time: new Date().toLocaleTimeString('zh-CN', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        })
+    };
+    
+    // 清空输入框
+    messageInput.value = '';
+    autoResizeTextarea();
+    
+    // 停止输入提示
+    if (window.realtimeClient) {
+        window.realtimeClient.sendTypingIndicator(false);
+    }
+    
+    // 立即显示消息（提供即时反馈）
+    messages.push(message);
+    renderMessage(message);
+    scrollToBottom();
+    
+    // 尝试通过WebSocket发送
+    if (isRealtimeEnabled && window.realtimeClient) {
+        const sent = window.realtimeClient.sendMessage(message);
+        if (!sent) {
+            // WebSocket发送失败，使用本地存储备份
+            saveRoomData();
+            showToast('消息已保存到本地，连接恢复后将同步', 'warning');
+        }
+    } else {
+        // 本地模式，保存到localStorage
+        saveRoomData();
+    }
+
+    // 在Hugging Face环境下提醒用户保存数据
+    remindToSaveData();
+}
+
+// 添加消息到界面
+function addMessage(type, text, author = 'AI助手', userId = null, shouldBroadcast = true) {
+    const message = {
+        type,
+        text,
+        author,
+        userId: userId || (type === 'ai' ? 'ai-assistant' : 'unknown'),
+        time: new Date().toLocaleTimeString('zh-CN', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        })
+    };
+    
+    // 立即显示消息
+    messages.push(message);
+    renderMessage(message);
+    scrollToBottom();
+    
+    // 通过WebSocket发送AI消息给其他用户（只有本地产生的消息才发送）
+    if (shouldBroadcast && isRealtimeEnabled && window.realtimeClient) {
+        const sent = window.realtimeClient.sendMessage(message);
+        if (!sent) {
+            // WebSocket发送失败，使用本地存储备份
+            saveRoomData();
+        }
+    } else {
+        // 本地模式或接收到的消息，保存到localStorage
+        saveRoomData();
+    }
+}
+
+// 渲染单条消息
+function renderMessage(message) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${message.type}-message`;
+    messageDiv.dataset.messageId = message.id || Date.now();
+    
+    let avatarContent;
+    let avatarColor;
+    
+    if (message.type === 'user') {
+        avatarColor = getAvatarColor(message.author);
+        const initials = message.author.charAt(0).toUpperCase();
+        avatarContent = `<span style="color: white; font-weight: bold;">${initials}</span>`;
+    } else {
+        avatarColor = '#6b7280';
+        avatarContent = '<i class="fas fa-robot"></i>';
+    }
+    
+    const isCurrentUser = message.userId === currentUserId;
+    
+    let messageText;
+    if (message.isLoading) {
+        messageDiv.classList.add('loading');
+        messageText = `
+            <div class="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        `;
+    } else {
+        messageText = `<div class="message-text">${message.text}</div>`;
+    }
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar" style="background-color: ${avatarColor}">${avatarContent}</div>
+        <div class="message-content">
+            <div class="message-header">
+                <span class="message-author" ${isCurrentUser ? 'style="color: #3b82f6; font-weight: 600;"' : ''}>
+                    ${message.author} ${isCurrentUser ? '(我)' : ''}
+                </span>
+                <span class="message-time">${message.time}</span>
+            </div>
+            ${messageText}
+        </div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+}
+
+// 处理AI集成（手动召唤版本）
+async function processWithAI(userMessage) {
+    if (isAIProcessing) return;
+    
+    isAIProcessing = true;
+    updateAIStatus('AI正在分析...', 'processing');
+    
+    try {
+        // 构建对话上下文
+        const context = buildAIContext(userMessage);
+        
+        const response = await fetch(CONFIG.API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CONFIG.API_KEY}`
+            },
+            body: JSON.stringify({
+                model: CONFIG.MODEL,
+                messages: context,
+                max_tokens: 300,
+                temperature: 0.7
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('AI服务响应异常');
+        }
+        
+        const data = await response.json();
+        const aiResponse = data.choices[0].message.content;
+        
+        // 添加AI回答
+        addMessage('ai', aiResponse, 'AI助手');
+        
+        updateAIStatus('AI回答完成', 'complete');
+        setTimeout(() => updateAIStatus('AI正在待命...', 'idle'), 2000);
+        
+    } catch (error) {
+        console.error('AI处理失败:', error);
+        updateAIStatus('AI服务暂时不可用', 'error');
+        setTimeout(() => updateAIStatus('AI正在待命...', 'idle'), 3000);
+        
+        // 模拟AI回答（降级方案）
+        setTimeout(() => {
+            const mockResponse = generateMockAIAnswer(userMessage);
+            addMessage('ai', mockResponse, 'AI助手');
+            updateAIStatus('AI正在待命...', 'idle');
+        }, 1000);
+    } finally {
+        isAIProcessing = false;
+    }
+}
+
+// 构建AI上下文
+function buildAIContext(userMessage) {
+    const recentMessages = messages.slice(-10);
+    const conversationHistory = recentMessages.map(msg => ({
+        role: msg.type === 'user' ? 'user' : 'assistant',
+        content: `${msg.author}: ${msg.text}`
+    }));
+    
+    return [
+        {
+            role: 'system',
+            content: '你是一个智能会议助手，能够回答关于当前讨论的问题、提供总结和建议。请用中文回答。'
+        },
+        ...conversationHistory,
+        {
+            role: 'user',
+            content: userMessage
+        }
+    ];
+}
+
+// 生成模拟AI响应
+function generateMockAIResponse(message) {
+    const mockResponses = [
+        `用户提到: ${message.substring(0, 20)}...`,
+        `讨论要点: ${message.includes('技术') ? '技术方案讨论' : '项目规划'}`,
+        `记录: 重要观点 - ${message.length > 10 ? message.substring(0, 15) + '...' : message}`,
+        `总结: ${message.includes('架构') ? '架构设计讨论' : '需求分析'}`,
+    ];
+    return mockResponses[Math.floor(Math.random() * mockResponses.length)];
+}
+
+// 生成模拟AI回答
+function generateMockAIAnswer(question) {
+    const answers = [
+        "根据当前讨论，我认为这是一个很有价值的观点。",
+        "从讨论内容来看，大家的想法比较一致，可以继续深入探讨。",
+        "这个问题很有深度，建议从多个角度继续分析。",
+        "基于现有信息，我可以提供一些补充建议。",
+        "讨论进展良好，建议总结一下目前的共识。"
+    ];
+    return answers[Math.floor(Math.random() * answers.length)];
+}
+
+// 更新AI状态
+function updateAIStatus(text, type) {
+    const icon = type === 'processing' ? 'fas fa-spinner fa-spin' : 
+                 type === 'error' ? 'fas fa-exclamation-triangle' : 
+                 'fas fa-robot';
+    aiStatus.innerHTML = `<i class="${icon}"></i> ${text}`;
+    
+    if (type === 'error') {
+        aiStatus.style.color = 'var(--error-color)';
+    } else {
+        aiStatus.style.color = 'var(--success-color)';
+    }
+}
+
+// 询问AI
+function askAI() {
+    askAIModal.style.display = 'block';
+    aiQuestionInput.focus();
+}
+
+// 关闭询问AI模态框
+function closeAskAIModal() {
+    askAIModal.style.display = 'none';
+    aiQuestionInput.value = '';
+}
+
+// 提交AI问题
+async function submitAIQuestion() {
+    const question = aiQuestionInput.value.trim();
+    if (!question || isAIProcessing) return;
+    
+    // 添加用户问题
+    addMessage('user', question, currentUsername, currentUserId);
+    closeAskAIModal();
+    
+    isAIProcessing = true;
+    updateAIStatus('AI正在思考...', 'processing');
+    
+    // 添加AI加载消息
+    const loadingMessageId = addLoadingMessage('AI正在思考中...');
+    
+    try {
+        const context = [
+            {
+                role: 'system',
+                content: '你是一个专业的技术顾问。基于当前的会议讨论内容，为用户提供准确、有用的回答。回答要简洁明了，不超过200字。'
+            },
+            {
+                role: 'user',
+                content: `当前讨论内容: ${messages.slice(-3).map(m => m.text).join('；')}。用户问题: ${question}`
+            }
+        ];
+        
+        const response = await fetch(CONFIG.API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CONFIG.API_KEY}`
+            },
+            body: JSON.stringify({
+                model: CONFIG.MODEL,
+                messages: context,
+                max_tokens: 300,
+                temperature: 0.7
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('AI问答服务异常');
+        }
+        
+        const data = await response.json();
+        const aiAnswer = data.choices[0].message.content;
+        
+        // 更新加载消息为实际回答
+        updateMessage(loadingMessageId, aiAnswer);
+        
+        // 同时创建一个新的AI消息发送给其他用户
+        const aiMessage = {
+            type: 'ai',
+            text: aiAnswer,
+            author: 'AI助手',
+            userId: 'ai-assistant',
+            time: new Date().toLocaleTimeString('zh-CN', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            })
+        };
+        
+        // 发送给其他用户（不影响本地显示）
+        if (isRealtimeEnabled && window.realtimeClient) {
+            window.realtimeClient.sendMessage(aiMessage);
+        }
+        
+        updateAIStatus('AI正在监听...', 'listening');
+        
+    } catch (error) {
+        console.error('AI问答失败:', error);
+        
+        // 更新加载消息为错误消息
+        updateMessage(loadingMessageId, '抱歉，AI服务暂时不可用，请稍后重试。', true);
+        
+        updateAIStatus('AI正在监听...', 'listening');
+    } finally {
+        isAIProcessing = false;
+    }
+}
+
+// 生成模拟AI回答
+function generateMockAIAnswer(question) {
+    const mockAnswers = [
+        `关于"${question}"，建议考虑以下几点：1) 技术可行性 2) 成本效益 3) 实施周期。`,
+        `这是一个很好的问题。基于当前讨论，我建议先进行小规模试点，验证效果后再全面推广。`,
+        `从技术角度看，这个方案是可行的。但需要注意数据安全和性能优化方面的问题。`,
+        `根据我的经验，建议采用渐进式实施策略，先解决核心痛点，再逐步完善。`
+    ];
+    return mockAnswers[Math.floor(Math.random() * mockAnswers.length)];
+}
+
+// 生成总结
+async function generateSummary() {
+    if (messages.length === 0) {
+        alert('暂无讨论内容可总结');
+        return;
+    }
+    
+    if (isAIProcessing) return;
+    
+    // 显示加载状态
+    summaryContent.innerHTML = '<p class="loading-summary">AI正在分析讨论内容，请稍候...</p>';
+    
+    isAIProcessing = true;
+    updateAIStatus('AI正在生成总结...', 'processing');
+    
+    try {
+        const context = [
+            {
+                role: 'system',
+                content: '你是一个专业的会议总结AI。请基于讨论内容，生成结构化的会议总结，包括：1) 主要讨论点 2) 达成的共识 3) 待解决问题 4) 下一步行动。用中文回答，格式清晰。'
+            },
+            {
+                role: 'user',
+                content: `会议讨论内容：${messages.map(m => `${m.author}: ${m.text}`).join('\n')}`
+            }
+        ];
+        
+        const response = await fetch(CONFIG.API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CONFIG.API_KEY}`
+            },
+            body: JSON.stringify({
+                model: CONFIG.MODEL,
+                messages: context,
+                max_tokens: 500,
+                temperature: 0.5
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('AI总结服务异常');
+        }
+        
+        const data = await response.json();
+        const summary = data.choices[0].message.content;
+        
+        // 在侧边栏显示总结
+        summaryContent.innerHTML = `<div class="summary-text">${summary.replace(/\n/g, '<br>')}</div>`;
+        
+        // 同时将总结作为AI消息添加到聊天流中，让所有用户都能看到
+        addMessage('ai', `📋 **会议总结**\n\n${summary}`, 'AI助手', 'ai-assistant');
+        
+        updateAIStatus('AI正在监听...', 'listening');
+        
+    } catch (error) {
+        console.error('AI总结失败:', error);
+        
+        // 生成模拟总结
+        const mockSummary = generateMockSummary();
+        summaryContent.innerHTML = `<div class="summary-text">${mockSummary}</div>`;
+        
+        // 同时将模拟总结作为AI消息添加到聊天流中
+        addMessage('ai', `📋 **会议总结**\n\n${mockSummary.replace(/<br>/g, '\n').replace(/<\/?strong>/g, '**')}`, 'AI助手', 'ai-assistant');
+        
+        updateAIStatus('AI正在监听...', 'listening');
+    } finally {
+        isAIProcessing = false;
+    }
+}
+
+// 获取用户头像颜色
+function getAvatarColor(name) {
+    const colors = [
+        '#ef4444', '#f97316', '#f59e0b', '#eab308',
+        '#84cc16', '#22c55e', '#10b981', '#14b8a6',
+        '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',
+        '#8b5cf6', '#a855f7', '#d946ef', '#ec4899'
+    ];
+    
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    return colors[Math.abs(hash) % colors.length];
+}
+
+// 生成模拟总结
+function generateMockSummary() {
+    return `
+        <strong>📋 会议总结</strong><br><br>
+        
+        <strong>🎯 主要讨论点：</strong><br>
+        • 技术架构方案讨论<br>
+        • 微服务与容器化部署<br>
+        • 项目实施计划<br><br>
+        
+        <strong>✅ 达成共识：</strong><br>
+        • 采用微服务架构方向<br>
+        • 优先考虑容器化部署<br><br>
+        
+        <strong>❓ 待解决问题：</strong><br>
+        • 具体技术选型细节<br>
+        • 团队技能储备评估<br><br>
+        
+        <strong>🚀 下一步行动：</strong><br>
+        • 制定详细技术方案<br>
+        • 安排技术调研<br>
+        • 下次会议确定时间表
+    `;
+}
+
+// 导出总结
+function exportSummary() {
+    const summaryText = summaryContent.innerText || summaryContent.textContent;
+    if (!summaryText || summaryText.includes('暂无总结')) {
+        alert('暂无总结内容可导出');
+        return;
+    }
+    
+    const fullContent = `
+会议记录 - Vibe Meeting
+时间: ${new Date().toLocaleString('zh-CN')}
+房间: ${document.getElementById('roomId').textContent}
+讨论内容:
+${messages.map(m => `[${m.time}] ${m.author}: ${m.text}`).join('\n')}
+AI总结:
+${summaryText}
+---
+由Vibe Meeting AI助手生成
+    `;
+    
+    const blob = new Blob([fullContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `meeting-summary-${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// 复制房间号
+function copyRoomId(event) {
+    const roomId = document.getElementById('roomId').textContent.replace('房间: ', '');
+    navigator.clipboard.writeText(roomId).then(() => {
+        const btn = event.target.tagName === 'BUTTON' ? event.target : event.target.closest('button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i> 已复制';
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+        }, 2000);
+    }).catch(err => {
+        console.error('复制失败:', err);
+        alert('复制失败，请手动复制房间号');
+    });
+}
+
+
+
+// 搜索过滤参与者
+function filterParticipants(searchTerm) {
+    const filteredParticipants = participants.filter(participant => 
+        participant.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    renderFilteredParticipants(filteredParticipants);
+}
+
+// 渲染过滤后的参与者列表
+function renderFilteredParticipants(filteredParticipants) {
+    participantsList.innerHTML = '';
+    
+    if (filteredParticipants.length === 0) {
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'empty-participants';
+        if (document.getElementById('participantsSearch').value.trim()) {
+            emptyDiv.innerHTML = '<p>没有找到匹配的在线成员</p>';
+        } else {
+            emptyDiv.innerHTML = '<p>暂无在线成员</p>';
+        }
+        participantsList.appendChild(emptyDiv);
+        return;
+    }
+    
+    filteredParticipants.forEach(participant => {
+        const participantDiv = document.createElement('div');
+        participantDiv.className = 'participant';
+        
+        const initials = participant.name.charAt(0).toUpperCase();
+        const avatarColor = getAvatarColor(participant.name);
+        const isCurrentUser = participant.userId === currentUserId;
+        
+        participantDiv.innerHTML = `
+            <div class="participant-avatar" style="background-color: ${avatarColor}">
+                ${initials}
+            </div>
+            <div class="participant-info">
+                <div class="participant-name">
+                    ${participant.name} ${isCurrentUser ? '(我)' : ''}
+                </div>
+                <div class="participant-status ${participant.status}">
+                    <i class="fas fa-circle"></i> ${participant.status === 'online' ? '在线' : '离线'}
+                </div>
+            </div>
+        `;
+        
+        participantsList.appendChild(participantDiv);
+    });
+}
+
+// 渲染参与者列表（原始函数，保持向后兼容）
+function renderParticipants() {
+    renderFilteredParticipants(participants);
+}
+
+// 这里可以添加真实的用户加入功能，例如WebSocket连接
+
+// 处理Excel文档
+async function processExcelDocument(file, fileMessage) {
+    try {
+        showToast('正在处理Excel文件...', 'info');
+        
+        const arrayBuffer = await file.arrayBuffer();
+        
+        // 使用Mammoth.js或其他库处理Excel，这里用模拟处理
+        // 在实际应用中，可以使用xlsx.js库
+        const content = `Excel文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n文件类型: ${file.type}\n\n内容摘要：这是一个Excel电子表格文件。由于浏览器限制，无法直接解析其内容，但可以通过AI工具箱进行智能分析。`;
+        
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: content
+        };
+        
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+        
+    } catch (error) {
+        console.error('处理Excel文件失败:', error);
+        showToast('处理Excel文件失败，请稍后重试', 'error');
+    }
+}
+
+// 处理PPT文档
+async function processPPTDocument(file, fileMessage) {
+    try {
+        showToast('正在处理PPT文件...', 'info');
+        
+        const content = `PPT文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n文件类型: ${file.type}\n\n内容摘要：这是一个PowerPoint演示文稿文件。由于浏览器限制，无法直接解析其内容，但可以通过AI工具箱进行智能分析。`;
+        
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: content
+        };
+        
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+        
+    } catch (error) {
+        console.error('处理PPT文件失败:', error);
+        showToast('处理PPT文件失败，请稍后重试', 'error');
+    }
+}
+
+// 处理CSV文件
+async function processCSVFile(file, fileMessage) {
+    try {
+        showToast('正在处理CSV文件...', 'info');
+        
+        const text = await file.text();
+        const lines = text.split('\n').slice(0, 20); // 只取前20行
+        const preview = lines.join('\n');
+        
+        const content = `CSV文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n\n内容预览：\n${preview}${lines.length > 20 ? '\n...（更多内容）' : ''}`;
+        
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: content
+        };
+        
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+        
+    } catch (error) {
+        console.error('处理CSV文件失败:', error);
+        showToast('处理CSV文件失败，请稍后重试', 'error');
+    }
+}
+
+// 处理JSON文件
+async function processJSONFile(file, fileMessage) {
+    try {
+        showToast('正在处理JSON文件...', 'info');
+        
+        const text = await file.text();
+        const jsonData = JSON.parse(text);
+        const preview = JSON.stringify(jsonData, null, 2).substring(0, 1000);
+        
+        const content = `JSON文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n\n内容预览：\n${preview}${text.length > 1000 ? '\n...（更多内容）' : ''}`;
+        
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: content
+        };
+        
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+        
+    } catch (error) {
+        console.error('处理JSON文件失败:', error);
+        showToast('处理JSON文件失败，请稍后重试', 'error');
+    }
+}
+
+// 处理HTML/XML文件
+async function processHTMLFile(file, fileMessage) {
+    try {
+        showToast('正在处理HTML/XML文件...', 'info');
+        
+        const text = await file.text();
+        const preview = text.substring(0, 1000);
+        
+        const content = `HTML/XML文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n\n内容预览：\n${preview}${text.length > 1000 ? '\n...（更多内容）' : ''}`;
+        
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: content
+        };
+        
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+        
+    } catch (error) {
+        console.error('处理HTML/XML文件失败:', error);
+        showToast('处理HTML/XML文件失败，请稍后重试', 'error');
+    }
+}
+
+// 处理通用文件（尝试提取文本内容）
+async function processGenericFile(file, fileMessage) {
+    try {
+        showToast('正在处理文件...', 'info');
+        
+        let content = '';
+        
+        // 尝试按文本文件处理
+        try {
+            const text = await file.text();
+            content = `文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n文件类型: ${file.type}\n\n内容预览：\n${text.substring(0, 1000)}${text.length > 1000 ? '\n...（更多内容）' : ''}`;
+        } catch (e) {
+            content = `文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n文件类型: ${file.type}\n\n内容：这是一个二进制文件，无法直接解析其内容。可以通过AI工具箱进行智能分析。`;
+        }
+        
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: content
+        };
+        
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+        
+    } catch (error) {
+        console.error('处理文件失败:', error);
+        showToast('处理文件失败，请稍后重试', 'error');
+    }
+}
+
+// 搜索聊天记录
+function searchChatMessages(searchTerm) {
+    const searchLower = searchTerm.toLowerCase();
+    const messageElements = messagesContainer.querySelectorAll('.message');
+    
+    messageElements.forEach(messageEl => {
+        const messageText = messageEl.querySelector('.message-text')?.textContent.toLowerCase() || '';
+        const authorName = messageEl.querySelector('.message-author')?.textContent.toLowerCase() || '';
+        
+        if (searchTerm === '' || messageText.includes(searchLower) || authorName.includes(searchLower)) {
+            messageEl.style.display = 'flex';
+            messageEl.style.opacity = '1';
+        } else {
+            messageEl.style.display = 'none';
+        }
+    });
+    
+    // 高亮匹配的文本（可选功能）
+    if (searchTerm !== '') {
+        highlightSearchTerms(searchTerm);
+    } else {
+        removeHighlights();
+    }
+}
+
+// 高亮搜索词
+function highlightSearchTerms(searchTerm) {
+    const messageElements = messagesContainer.querySelectorAll('.message');
+    messageElements.forEach(messageEl => {
+        const messageText = messageEl.querySelector('.message-text');
+        if (messageText) {
+            const text = messageText.textContent;
+            const regex = new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi');
+            const highlightedText = text.replace(regex, '<mark class="search-highlight">$1</mark>');
+            messageText.innerHTML = highlightedText;
+        }
+    });
+}
+
+// 移除高亮
+function removeHighlights() {
+    const messageElements = messagesContainer.querySelectorAll('.message');
+    messageElements.forEach(messageEl => {
+        const messageText = messageEl.querySelector('.message-text');
+        if (messageText) {
+            messageText.innerHTML = messageText.textContent;
+        }
+    });
+}
+
+// 转义正则表达式特殊字符
+function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// 注册服务工作者
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')
+                .then(registration => {
+                    console.log('SW注册成功: ', registration);
+                })
+                .catch(registrationError => {
+                    console.log('SW注册失败: ', registrationError);
+                });
+        });
+    }
+}
+
+// 设置离线指示器
+function setupOfflineIndicator() {
+    const indicator = document.createElement('div');
+    indicator.className = 'offline-indicator';
+    indicator.textContent = '⚠️ 网络连接已断开，部分功能可能受限';
+    document.body.appendChild(indicator);
+
+    window.addEventListener('online', () => {
+        indicator.classList.remove('show');
+        showToast('网络已恢复', 'success');
+    });
+
+    window.addEventListener('offline', () => {
+        indicator.classList.add('show');
+    });
+}
+
+// 显示提示消息
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `${type}-toast`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', init);
+
+// 文件上传和OCR功能
+const fileInput = document.getElementById('fileInput');
+const uploadZone = document.getElementById('uploadZone');
+
+// 触发文件选择
+function triggerFileUpload() {
+    fileInput.click();
+}
+
+// 文件选择事件
+fileInput.addEventListener('change', handleFileSelect);
+
+// 处理文件选择
+function handleFileSelect(event) {
+    const files = Array.from(event.target.files);
+    files.forEach(file => processFile(file));
+    event.target.value = ''; // 重置输入
+}
+
+// 拖拽上传事件监听 - 使用更稳定的区域检测
+const dragMessageInput = document.getElementById('messageInput');
+const inputContainer = document.querySelector('.input-container');
+
+// 只为相关容器添加事件监听
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    inputContainer.addEventListener(eventName, preventDefaults, false);
+});
+
+// 防抖处理 - 使用更严格的区域检测
+let isDragging = false;
+let dragCheckTimeout = null;
+
+function highlight() {
+    clearTimeout(dragCheckTimeout);
+    if (!isDragging) {
+        isDragging = true;
+        uploadZone.style.display = 'block';
+        uploadZone.classList.add('dragover');
+    }
+}
+
+function unhighlight() {
+    clearTimeout(dragCheckTimeout);
+    dragCheckTimeout = setTimeout(() => {
+        // 检查是否还在拖拽区域内
+        const rect = inputContainer.getBoundingClientRect();
+        const isStillOver = false; // 简化检测，直接隐藏
+        
+        if (!isStillOver) {
+            isDragging = false;
+            uploadZone.style.display = 'none';
+            uploadZone.classList.remove('dragover');
+        }
+    }, 50);
+}
+
+// 事件委托到容器级别
+inputContainer.addEventListener('dragenter', highlight, false);
+inputContainer.addEventListener('dragover', highlight, false);
+inputContainer.addEventListener('dragleave', unhighlight, false);
+inputContainer.addEventListener('drop', handleDrop);
+
+// 防止默认行为
+function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+// 处理拖拽文件
+function handleDrop(e) {
+    const files = Array.from(e.dataTransfer.files);
+    files.forEach(file => processFile(file));
+    isDragging = false;
+    uploadZone.style.display = 'none';
+    uploadZone.classList.remove('dragover');
+}
+
+function handleDrop(e) {
+    const files = Array.from(e.dataTransfer.files);
+    files.forEach(file => processFile(file));
+    uploadZone.style.display = 'none';
+}
+
+// 处理单个文件
+async function processFile(file) {
+    if (!file) return;
+    
+    const maxSize = 10 * 1024 * 1024; // 10MB限制
+    if (file.size > maxSize) {
+        showToast('文件大小超过10MB限制', 'error');
+        return;
+    }
+    
+    const supportedTypes = [
+        // 图片格式
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml',
+        // 文档格式
+        'application/pdf', 'text/plain', 'text/csv',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.oasis.opendocument.text',
+        'application/vnd.oasis.opendocument.presentation',
+        'application/vnd.oasis.opendocument.spreadsheet',
+        // 网页格式
+        'text/html', 'text/xml', 'application/json',
+        // 压缩格式
+        'application/zip', 'application/x-rar-compressed', 'application/x-tar'
+    ];
+    
+    if (!supportedTypes.includes(file.type)) {
+        showToast('不支持的文件类型', 'error');
+        return;
+    }
+    
+    // 将文件转换为base64以支持跨端分享
+    const fileBase64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.readAsDataURL(file);
+    });
+    
+    // 创建文件消息
+    const fileMessage = {
+        type: 'file',
+        file: {
+            name: file.name,
+            size: formatFileSize(file.size),
+            type: file.type,
+            url: URL.createObjectURL(file),
+            base64: fileBase64 // 添加base64数据用于跨端分享
+        },
+        author: currentUsername,
+        userId: currentUserId,
+        time: new Date().toLocaleTimeString('zh-CN', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        })
+    };
+    
+    messages.push(fileMessage);
+    renderMessage(fileMessage);
+    saveRoomData();
+    
+    // 发送文件消息给其他用户（包含base64数据）
+    if (isRealtimeEnabled && window.realtimeClient) {
+        const fileMessageForOthers = {
+            ...fileMessage,
+            file: {
+                ...fileMessage.file,
+                url: null // 移除本地URL，其他用户使用base64数据
+            }
+        };
+        window.realtimeClient.sendMessage(fileMessageForOthers);
+    }
+    
+    // 根据文件类型处理内容
+    if (file.type === 'text/plain') {
+        await processTextFile(file, fileMessage);
+    } else if (file.type.startsWith('image/')) {
+        // 图片文件 - 设置文件信息但不自动处理
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type
+        };
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+    } else if (file.type === 'application/pdf' || file.type.includes('word')) {
+        // PDF和Word文档 - 提取文本内容
+        if (file.type === 'application/pdf') {
+            await processPDFDocument(file, fileMessage);
+        } else if (file.type.includes('word')) {
+            await processWordDocument(file, fileMessage);
+        }
+    } else if (file.type.includes('excel') || file.type.includes('spreadsheet')) {
+        // Excel文件
+        await processExcelDocument(file, fileMessage);
+    } else if (file.type.includes('powerpoint') || file.type.includes('presentation')) {
+        // PPT文件
+        await processPPTDocument(file, fileMessage);
+    } else if (file.type === 'text/csv') {
+        // CSV文件
+        await processCSVFile(file, fileMessage);
+    } else if (file.type === 'application/json') {
+        // JSON文件
+        await processJSONFile(file, fileMessage);
+    } else if (file.type === 'text/html' || file.type === 'text/xml') {
+        // HTML/XML文件
+        await processHTMLFile(file, fileMessage);
+    } else {
+        // 其他文件类型 - 尝试提取文本内容
+        await processGenericFile(file, fileMessage);
+    }
+}
+
+// 格式化文件大小
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// 处理图片OCR
+async function processImageWithOCR(file, fileMessage) {
+    try {
+        showToast('正在识别图片中的文字...', 'info');
+        
+        const base64Image = await fileToBase64(file);
+        
+        const response = await fetch('https://api.deepbricks.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CONFIG.API_KEY}`
+            },
+            body: JSON.stringify({
+                model: 'gemini-2.5-flash',
+                messages: [
+                    {
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'text',
+                                text: '请识别这张图片中的所有文字内容，并保持原有格式。如果图片中包含表格或结构化数据，请以清晰的格式呈现。'
+                            },
+                            {
+                                type: 'image_url',
+                                image_url: {
+                                    url: `data:${file.type};base64,${base64Image}`
+                                }
+                            }
+                        ]
+                    }
+                ],
+                max_tokens: 1000
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('OCR识别失败');
+        }
+        
+        const data = await response.json();
+        const ocrText = data.choices[0].message.content;
+        
+        // 添加OCR结果消息
+        const ocrMessage = {
+            type: 'ocr',
+            text: ocrText,
+            originalFile: file.name,
+            author: 'AI助手',
+            userId: 'ai-assistant',
+            time: new Date().toLocaleTimeString('zh-CN', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            })
+        };
+        
+        messages.push(ocrMessage);
+        renderMessage(ocrMessage);
+        saveRoomData();
+        
+        // 发送OCR结果给其他用户
+        if (isRealtimeEnabled && window.realtimeClient) {
+            window.realtimeClient.sendMessage(ocrMessage);
+        }
+        
+        showToast('OCR识别完成', 'success');
+        
+    } catch (error) {
+        console.error('OCR识别失败:', error);
+        showToast('OCR识别失败，请稍后重试', 'error');
+    }
+}
+
+// 处理文本文件
+async function processTextFile(file, fileMessage) {
+    try {
+        const text = await file.text();
+        
+        // 设置文件内容到currentFileInfo，供AI工具箱使用
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: text || '文本文件内容为空'
+        };
+        
+        // 显示AI工具箱
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+        
+    } catch (error) {
+        console.error('文本文件读取失败:', error);
+        showToast('文本文件读取失败', 'error');
+    }
+}
+
+// 文件转Base64
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+            const base64 = reader.result.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = error => reject(error);
+    });
+}
+
+// 处理PDF文档
+async function processPDFDocument(file, fileMessage) {
+    try {
+        showToast('正在提取PDF文档内容...', 'info');
+        
+        const fileData = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: fileData }).promise;
+        
+        let fullText = '';
+        const totalPages = pdf.numPages;
+        
+        for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map(item => item.str).join(' ');
+            fullText += pageText + '\n\n';
+        }
+        
+        if (!fullText.trim()) {
+            throw new Error('PDF文档中没有找到可提取的文本内容');
+        }
+        
+        // 设置文件内容到currentFileInfo
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: fullText.trim() || 'PDF文档内容为空'
+        };
+        
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+        showToast('PDF文档内容提取完成', 'success');
+        
+    } catch (error) {
+        console.error('PDF文档处理失败:', error);
+        showToast(`PDF文档处理失败: ${error.message}`, 'error');
+        
+        // 即使失败也显示工具箱，但使用占位符内容
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: `这是一个PDF文档，但无法提取文本内容。请使用OCR功能或上传其他格式的文档。`
+        };
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+    }
+}
+
+// 处理Word文档
+async function processWordDocument(file, fileMessage) {
+    try {
+        showToast('正在提取Word文档内容...', 'info');
+        
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        
+        if (!result.value.trim()) {
+            throw new Error('Word文档中没有找到可提取的文本内容');
+        }
+        
+        // 设置文件内容到currentFileInfo
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: result.value.trim() || '文档内容为空'
+        };
+        
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+        showToast('Word文档内容提取完成', 'success');
+        
+    } catch (error) {
+        console.error('Word文档处理失败:', error);
+        showToast(`Word文档处理失败: ${error.message}`, 'error');
+        
+        // 即使失败也显示工具箱，但使用占位符内容
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type,
+            content: `这是一个Word文档，但无法提取文本内容。请检查文档格式或上传其他格式的文档。`
+        };
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+    }
+}
+
+// 渲染文件消息
+function renderFileMessage(message) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${message.type === 'file' ? 'file-message' : 'text-message'}`;
+    messageDiv.dataset.messageId = Date.now(); // 添加唯一标识
+    
+    const avatarColor = message.author === 'AI助手' ? '#6b7280' : getAvatarColor(message.author);
+    const initials = message.author.charAt(0).toUpperCase();
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar" style="background-color: ${avatarColor}">
+            ${initials}
+        </div>
+        <div class="message-content">
+            <div class="message-header">
+                <span class="message-author">${message.author}</span>
+                <span class="message-time">${message.time}</span>
+            </div>
+            ${renderFileContent(message)}
+        </div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// 更新消息内容（用于替换加载消息）
+function updateMessage(messageId, newText, isError = false) {
+    // 更新DOM元素
+    const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (messageDiv) {
+        const contentDiv = messageDiv.querySelector('.message-content');
+        const headerDiv = contentDiv.querySelector('.message-header');
+        
+        messageDiv.classList.remove('loading');
+        
+        contentDiv.innerHTML = `
+            <div class="message-header">
+                ${headerDiv.innerHTML}
+            </div>
+            <div class="message-text ${isError ? 'error-text' : ''}">${newText}</div>
+        `;
+    }
+    
+    // 更新messages数组中的对应消息
+    const msgIndex = messages.findIndex(m => m.id === messageId);
+    if (msgIndex !== -1) {
+        messages[msgIndex].text = newText;
+        messages[msgIndex].isLoading = false;
+        
+        // updateMessage现在只负责本地更新，不发送WebSocket消息
+        // WebSocket发送由调用者单独处理
+        
+        // 保存到本地存储
+        saveRoomData();
+    }
+}
+
+// 添加加载消息并返回消息ID（仅本地显示，不发送给其他用户）
+function addLoadingMessage(text) {
+    const messageId = Date.now();
+    const loadingMessage = {
+        id: messageId,
+        type: 'ai',
+        text: text,
+        author: 'AI助手',
+        userId: 'ai-assistant',
+        time: new Date().toLocaleTimeString('zh-CN', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        }),
+        isLoading: true
+    };
+    
+    // 只在本地添加，不发送给其他用户（这只是加载占位符）
+    messages.push(loadingMessage);
+    renderMessage(loadingMessage);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    return messageId;
+}
+
+// 渲染文件内容
+function renderFileContent(message) {
+    if (message.type === 'file') {
+        const icon = getFileIcon(message.file.type);
+        const messageId = Date.now();
+        const isSupportedForAI = message.file.type.startsWith('image/') || 
+                               message.file.type === 'text/plain' ||
+                               message.file.type === 'application/pdf' ||
+                               message.file.type.includes('word');
+        
+        return `
+            <div class="file-message" data-file-id="${messageId}" data-file-name="${message.file.name}" data-file-url="${message.file.url}" data-file-type="${message.file.type}">
+                <i class="fas ${icon} file-icon"></i>
+                <div class="file-info">
+                    <div class="file-name">${message.file.name}</div>
+                    <div class="file-size">${message.file.size}</div>
+                </div>
+                <div class="file-actions">
+                    <a href="${message.file.url}" download="${message.file.name}" class="file-download" title="下载文件">
+                        <i class="fas fa-download"></i>
+                    </a>
+                    ${isSupportedForAI ? 
+                        `<button class="btn-ai-tool" onclick="window.showAIToolbar('${message.file.name}', '${message.file.url}', '${message.file.type}')" title="AI工具">
+                            <i class="fas fa-magic"></i>
+                        </button>` : ''
+                    }
+                </div>
+            </div>
+        `;
+    } else if (message.type === 'ocr') {
+        return `
+            <div class="ocr-result">
+                <strong>图片文字识别结果 (${message.originalFile}):</strong>
+                <div class="message-text">${message.text}</div>
+            </div>
+        `;
+    } else if (message.type === 'text') {
+        return `
+            <div class="text-content">
+                <strong>文本文件内容 (${message.originalFile}):</strong>
+                <div class="message-text"><pre>${message.text}</pre></div>
+            </div>
+        `;
+    }
+}
+
+// 获取文件图标
+function getFileIcon(fileType) {
+    if (fileType.startsWith('image/')) return 'fa-image';
+    if (fileType === 'application/pdf') return 'fa-file-pdf';
+    if (fileType.includes('word')) return 'fa-file-word';
+    if (fileType === 'text/plain') return 'fa-file-alt';
+    return 'fa-file';
+}
+
+// AI工具箱面板功能 - 根据文件类型动态显示工具
+function showAIToolbar(fileName, fileUrl, fileType) {
+    const placeholder = document.getElementById('toolboxPlaceholder');
+    const activePanel = document.getElementById('toolboxActive');
+    const currentFileName = document.getElementById('currentFileName');
+    
+    // 设置当前文件信息到全局变量
+    window.currentFileInfo = {
+        name: fileName,
+        url: fileUrl,
+        type: fileType
+    };
+    
+    // 更新文件名显示
+    currentFileName.textContent = fileName;
+    
+    // 获取所有工具按钮
+    const ocrBtn = document.getElementById('ocrBtn');
+    const translateBtn = document.getElementById('translateBtn');
+    const summarizeBtn = document.getElementById('summarizeBtn');
+    const keywordsBtn = document.getElementById('keywordsBtn');
+    
+    // 根据文件类型动态显示/隐藏工具按钮
+    const isImage = fileType && fileType.startsWith('image/');
+    const isText = fileType && (
+        fileType === 'text/plain' || 
+        fileType.includes('word') || 
+        fileType === 'application/pdf'
+    );
+    
+    // OCR - 仅图片可用
+    ocrBtn.style.display = isImage ? 'flex' : 'none';
+    ocrBtn.disabled = !isImage;
+    
+    // 翻译、总结、关键词 - 文本类文件可用
+    translateBtn.style.display = isText ? 'flex' : 'none';
+    summarizeBtn.style.display = isText ? 'flex' : 'none';
+    keywordsBtn.style.display = isText ? 'flex' : 'none';
+    
+    translateBtn.disabled = !isText;
+    summarizeBtn.disabled = !isText;
+    keywordsBtn.disabled = !isText;
+    
+    // 显示活跃面板
+    placeholder.style.display = 'none';
+    activePanel.style.display = 'block';
+}
+
+function performOCR() {
+    if (!window.currentFileInfo || !window.currentFileInfo.type.startsWith('image/')) {
+        showToast('此功能仅适用于图片文件', 'error');
+        return;
+    }
+    
+    const { name, url, type } = window.currentFileInfo;
+    
+    // 添加加载消息并获取消息ID
+    const messageId = addLoadingMessage(`正在对图片 "${name}" 进行OCR文字识别，请稍候...`);
+    
+    // 创建临时文件对象
+    fetch(url)
+        .then(res => res.blob())
+        .then(blob => {
+            const file = new File([blob], name, { type: type });
+            return processImageWithOCR(file, { name: name });
+        })
+        .then(() => {
+            // 处理完成，更新加载消息为成功消息
+            updateMessage(messageId, `OCR文字识别完成！识别结果已添加到聊天记录中。`);
+            
+            // 同时创建一个新的AI消息发送给其他用户
+            const aiMessage = {
+                type: 'ai',
+                text: `OCR文字识别完成！识别结果已添加到聊天记录中。`,
+                author: 'AI助手',
+                userId: 'ai-assistant',
+                time: new Date().toLocaleTimeString('zh-CN', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                })
+            };
+            
+            // 发送给其他用户
+            if (isRealtimeEnabled && window.realtimeClient) {
+                window.realtimeClient.sendMessage(aiMessage);
+            }
+        })
+        .catch(err => {
+            console.error('获取文件失败:', err);
+            
+            // 处理失败，更新加载消息为错误消息
+            updateMessage(messageId, `抱歉，对图片 "${name}" 进行OCR识别时出错：${err.message}`, true);
+        });
+}
+
+async function translateText() {
+    if (!window.currentFileInfo) {
+        showToast('请先选择文件', 'error');
+        return;
+    }
+    
+    const { name, content } = window.currentFileInfo;
+    
+    // 添加加载消息并获取消息ID
+    const messageId = addLoadingMessage(`正在翻译文件 "${name}" 的内容，请稍候...`);
+    
+    try {
+        const response = await fetch(CONFIG.API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CONFIG.API_KEY}`
+            },
+            body: JSON.stringify({
+                model: CONFIG.MODEL,
+                messages: [
+                    {
+                        role: 'system',
+                        content: '你是一个专业的翻译助手，请将用户提供的文本翻译成中文。请保持原文格式，准确翻译内容。'
+                    },
+                    {
+                        role: 'user',
+                        content: `请翻译以下内容：\n\n${content || '文档内容为空'}`
+                    }
+                ],
+                max_tokens: 1000,
+                temperature: 0.3
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('翻译服务响应异常');
+        }
+        
+        const data = await response.json();
+        const translatedText = data.choices[0].message.content;
+        
+        // 更新加载消息为成功结果
+        updateMessage(messageId, `📋 **文件翻译完成：${name}**\n\n${translatedText}`);
+        
+        // 同时创建一个新的AI消息发送给其他用户
+        const aiMessage = {
+            type: 'ai',
+            text: `📋 **文件翻译完成：${name}**\n\n${translatedText}`,
+            author: 'AI助手',
+            userId: 'ai-assistant',
+            time: new Date().toLocaleTimeString('zh-CN', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            })
+        };
+        
+        // 发送给其他用户
+        if (isRealtimeEnabled && window.realtimeClient) {
+            window.realtimeClient.sendMessage(aiMessage);
+        }
+        
+    } catch (error) {
+        console.error('翻译失败:', error);
+        
+        // 更新加载消息为错误结果
+        updateMessage(messageId, `❌ 翻译失败：${error.message}。请稍后重试。`, true);
+    }
+}
+
+async function summarizeText() {
+    if (!window.currentFileInfo) {
+        showToast('请先选择文件', 'error');
+        return;
+    }
+    
+    const { name, content } = window.currentFileInfo;
+    
+    // 添加加载消息并获取消息ID
+    const messageId = addLoadingMessage(`正在总结文件 "${name}" 的内容，请稍候...`);
+    
+    try {
+        const response = await fetch(CONFIG.API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CONFIG.API_KEY}`
+            },
+            body: JSON.stringify({
+                model: CONFIG.MODEL,
+                messages: [
+                    {
+                        role: 'system',
+                        content: '你是一个专业的文本总结助手，请为用户提供简洁准确的文本摘要。请用中文总结，突出关键信息和要点。'
+                    },
+                    {
+                        role: 'user',
+                        content: `请总结以下文本内容，提供简洁的摘要：\n\n${content || '文档内容为空'}`
+                    }
+                ],
+                max_tokens: 500,
+                temperature: 0.3
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('总结服务响应异常');
+        }
+        
+        const data = await response.json();
+        const summary = data.choices[0].message.content;
+        
+        // 更新加载消息为成功结果
+        updateMessage(messageId, `📝 **文件总结：${name}**\n\n${summary}`);
+        
+        // 同时创建一个新的AI消息发送给其他用户
+        const aiMessage = {
+            type: 'ai',
+            text: `📝 **文件总结：${name}**\n\n${summary}`,
+            author: 'AI助手',
+            userId: 'ai-assistant',
+            time: new Date().toLocaleTimeString('zh-CN', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            })
+        };
+        
+        // 发送给其他用户
+        if (isRealtimeEnabled && window.realtimeClient) {
+            window.realtimeClient.sendMessage(aiMessage);
+        }
+        
+    } catch (error) {
+        console.error('总结失败:', error);
+        
+        // 更新加载消息为错误结果
+        updateMessage(messageId, `❌ 总结失败：${error.message}。请稍后重试。`, true);
+    }
+}
+
+async function extractKeywords() {
+    if (!window.currentFileInfo) {
+        showToast('请先选择文件', 'error');
+        return;
+    }
+    
+    const { name, content } = window.currentFileInfo;
+    
+    // 添加加载消息并获取消息ID
+    const messageId = addLoadingMessage(`正在从文件 "${name}" 中提取关键词，请稍候...`);
+    
+    try {
+        const response = await fetch(CONFIG.API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CONFIG.API_KEY}`
+            },
+            body: JSON.stringify({
+                model: CONFIG.MODEL,
+                messages: [
+                    {
+                        role: 'system',
+                        content: '你是一个专业的关键词提取助手，请从文本中提取最重要的关键词和短语。请用中文回复，列出5-10个关键词，并简要说明每个关键词的重要性。'
+                    },
+                    {
+                        role: 'user',
+                        content: `请从以下文本中提取关键词：\n\n${content || '文档内容为空'}`
+                    }
+                ],
+                max_tokens: 400,
+                temperature: 0.3
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('关键词提取服务响应异常');
+        }
+        
+        const data = await response.json();
+        const keywords = data.choices[0].message.content;
+        
+        // 更新加载消息为成功结果
+        updateMessage(messageId, `🔑 **关键词提取：${name}**\n\n${keywords}`);
+        
+        // 同时创建一个新的AI消息发送给其他用户
+        const aiMessage = {
+            type: 'ai',
+            text: `🔑 **关键词提取：${name}**\n\n${keywords}`,
+            author: 'AI助手',
+            userId: 'ai-assistant',
+            time: new Date().toLocaleTimeString('zh-CN', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            })
+        };
+        
+        // 发送给其他用户
+        if (isRealtimeEnabled && window.realtimeClient) {
+            window.realtimeClient.sendMessage(aiMessage);
+        }
+        
+    } catch (error) {
+        console.error('关键词提取失败:', error);
+        
+        // 更新加载消息为错误结果
+        updateMessage(messageId, `❌ 关键词提取失败：${error.message}。请稍后重试。`, true);
+    }
+}
+
+
+
+// 更新renderFileContent函数以适配新的工具箱
+function renderFileContent(message) {
+    if (message.type === 'file') {
+        const icon = getFileIcon(message.file.type);
+        const messageId = Date.now();
+        return `
+            <div class="file-message" data-file-id="${messageId}">
+                <i class="fas ${icon} file-icon"></i>
+                <div class="file-info">
+                    <div class="file-name">${message.file.name}</div>
+                    <div class="file-size">${message.file.size}</div>
+                </div>
+                <div class="file-actions">
+                    <a href="${message.file.url}" download="${message.file.name}" class="file-download" title="下载文件">
+                        <i class="fas fa-download"></i>
+                    </a>
+                    ${message.file.type.startsWith('image/') ? 
+                        `<button class="btn-ai-tool" onclick="showAIToolbar('${message.file.name}', '${message.file.url}', '${message.file.type}')" title="AI工具">
+                            <i class="fas fa-magic"></i>
+                        </button>` : ''
+                    }
+                </div>
+            </div>
+        `;
+    } else if (message.type === 'ocr') {
+        return `
+            <div class="ocr-result">
+                <strong>图片文字识别结果 (${message.originalFile}):</strong>
+                <div class="message-text">${message.text}</div>
+            </div>
+        `;
+    } else if (message.type === 'text') {
+        return `
+            <div class="text-content">
+                <strong>文本文件内容 (${message.originalFile}):</strong>
+                <div class="message-text"><pre>${message.text}</pre></div>
+            </div>
+        `;
+    }
+}
+
+// 将函数暴露到全局作用域
+window.showAIToolbar = showAIToolbar;
+window.performOCR = performOCR;
+window.translateText = translateText;
+window.summarizeText = summarizeText;
+window.extractKeywords = extractKeywords;
+
+// 修改renderMessage函数以支持文件消息
+const originalRenderMessage = renderMessage;
+renderMessage = function(message) {
+    if (message.type === 'file' || message.type === 'ocr' || message.type === 'text') {
+        renderFileMessage(message);
+    } else {
+        originalRenderMessage(message);
+    }
+};
+
+// 页面加载完成后初始化应用
+document.addEventListener('DOMContentLoaded', init);
