@@ -2194,30 +2194,41 @@ function getFileIcon(fileType) {
 }
 
 // AI工具箱面板功能 - 根据文件类型动态显示工具
-function showAIToolbar(fileName, fileUrl, fileType) {
+async function showAIToolbar(fileName, fileUrl, fileType) {
     const placeholder = document.getElementById('toolboxPlaceholder');
     const activePanel = document.getElementById('toolboxActive');
     const currentFileName = document.getElementById('currentFileName');
     
-    // 设置当前文件信息到全局变量，保留已有的content
+    // 检查是否需要重新处理文件内容
+    const needsContentProcessing = !window.currentFileInfo || 
+                                  window.currentFileInfo.name !== fileName || 
+                                  !window.currentFileInfo.content;
+    
+    // 设置当前文件信息到全局变量
     if (!window.currentFileInfo) {
         window.currentFileInfo = {};
     }
     
     // 保留现有的content，更新其他属性
-    const existingContent = window.currentFileInfo.content;
+    const existingContent = needsContentProcessing ? undefined : window.currentFileInfo.content;
     window.currentFileInfo = {
         name: fileName,
         url: fileUrl,
         type: fileType,
-        content: existingContent || undefined  // 保留原有content
+        content: existingContent
     };
     
     console.log('showAIToolbar设置文件信息:', {
         fileName: fileName,
         hasContent: !!window.currentFileInfo.content,
-        contentLength: window.currentFileInfo.content ? window.currentFileInfo.content.length : 0
+        contentLength: window.currentFileInfo.content ? window.currentFileInfo.content.length : 0,
+        needsProcessing: needsContentProcessing
     });
+    
+    // 如果需要处理文件内容，异步下载并处理
+    if (needsContentProcessing) {
+        await processRemoteFile(fileName, fileUrl, fileType);
+    }
     
     // 获取所有工具按钮
     const ocrBtn = document.getElementById('ocrBtn');
@@ -2580,6 +2591,187 @@ function testXLSXLibrary() {
     console.log('==================');
 }
 
+// 处理远程文件（其他用户上传的文件）
+async function processRemoteFile(fileName, fileUrl, fileType) {
+    try {
+        showToast(`正在处理远程文件 "${fileName}"...`, 'info');
+        console.log('开始处理远程文件:', {fileName, fileUrl, fileType});
+        
+        // 下载文件
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+            throw new Error(`下载文件失败: ${response.status}`);
+        }
+        
+        const blob = await response.blob();
+        const file = new File([blob], fileName, { type: fileType });
+        
+        console.log('远程文件下载完成:', {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type
+        });
+        
+        // 根据文件类型处理内容
+        if (fileType === 'text/plain') {
+            await processTextFileContent(file);
+        } else if (fileType.startsWith('image/')) {
+            // 图片文件不需要内容处理，直接使用
+            window.currentFileInfo.content = `图片文件: ${fileName}`;
+        } else if (fileType === 'application/pdf') {
+            await processPDFFileContent(file);
+        } else if (fileType.includes('word') || 
+                   fileType === 'application/msword' ||
+                   fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+            await processWordFileContent(file);
+        } else if (fileType.includes('excel') || fileType.includes('spreadsheet') ||
+                   fileType === 'application/vnd.ms-excel' ||
+                   fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+            await processExcelFileContent(file);
+        } else if (fileType.includes('powerpoint') || fileType.includes('presentation') ||
+                   fileType === 'application/vnd.ms-powerpoint' ||
+                   fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
+            await processPPTFileContent(file);
+        } else if (fileType === 'text/csv') {
+            await processCSVFileContent(file);
+        } else if (fileType === 'application/json') {
+            await processJSONFileContent(file);
+        } else {
+            // 不支持的文件类型
+            window.currentFileInfo.content = `文件: ${fileName}\n文件大小: ${formatFileSize(file.size)}\n文件类型: ${fileType}\n\n这是一个二进制文件，无法直接解析其内容。`;
+        }
+        
+        console.log('远程文件处理完成:', {
+            fileName: fileName,
+            hasContent: !!window.currentFileInfo.content,
+            contentLength: window.currentFileInfo.content ? window.currentFileInfo.content.length : 0
+        });
+        
+        showToast('远程文件处理完成，可以进行AI分析', 'success');
+        
+    } catch (error) {
+        console.error('处理远程文件失败:', error);
+        showToast(`处理远程文件失败: ${error.message}`, 'error');
+        
+        // 设置占位符内容
+        window.currentFileInfo.content = `远程文件处理失败: ${error.message}`;
+    }
+}
+
+// 辅助函数：处理各类文件内容（不包含UI更新）
+async function processTextFileContent(file) {
+    const text = await file.text();
+    window.currentFileInfo.content = `文本文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n\n内容：\n${text}`;
+}
+
+async function processPDFFileContent(file) {
+    if (typeof pdfjsLib === 'undefined') {
+        throw new Error('PDF.js库未加载');
+    }
+    
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    
+    let fullText = '';
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(' ');
+        fullText += pageText + '\n\n';
+    }
+    
+    window.currentFileInfo.content = fullText.trim() || 'PDF文档内容为空';
+}
+
+async function processWordFileContent(file) {
+    if (typeof mammoth === 'undefined') {
+        throw new Error('Mammoth.js库未加载');
+    }
+    
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    window.currentFileInfo.content = result.value.trim() || 'Word文档内容为空';
+}
+
+async function processExcelFileContent(file) {
+    if (typeof XLSX === 'undefined') {
+        throw new Error('XLSX.js库未加载');
+    }
+    
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    
+    let allSheetsContent = '';
+    const sheetNames = workbook.SheetNames;
+    
+    for (let i = 0; i < sheetNames.length; i++) {
+        const sheetName = sheetNames[i];
+        const worksheet = workbook.Sheets[sheetName];
+        
+        try {
+            let sheetContent = '';
+            
+            if (typeof XLSX.utils.sheet_to_csv === 'function') {
+                const csvData = XLSX.utils.sheet_to_csv(worksheet);
+                if (csvData && csvData.trim()) {
+                    sheetContent = csvData.trim();
+                }
+            }
+            
+            if (!sheetContent && typeof XLSX.utils.sheet_to_json === 'function') {
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                if (jsonData && jsonData.length > 0) {
+                    sheetContent = jsonData.map(row => (row || []).join('\t')).filter(line => line.trim()).join('\n');
+                }
+            }
+            
+            if (sheetContent && sheetContent.trim()) {
+                allSheetsContent += `\n=== 工作表: ${sheetName} ===\n`;
+                allSheetsContent += sheetContent.trim() + '\n';
+            }
+        } catch (sheetError) {
+            console.warn(`处理工作表 ${sheetName} 失败:`, sheetError);
+        }
+    }
+    
+    const content = `Excel文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n工作表数量: ${sheetNames.length}\n\n内容：${allSheetsContent.trim()}`;
+    window.currentFileInfo.content = content;
+}
+
+async function processPPTFileContent(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    const isZipFormat = uint8Array[0] === 0x50 && uint8Array[1] === 0x4B;
+    
+    let content = `PowerPoint文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n文件类型: ${file.type}\n\n`;
+    
+    if (isZipFormat) {
+        content += `文件格式：PowerPoint 2007+ (.pptx)\n压缩格式：是（基于XML）\n\n`;
+        content += `内容摘要：这是一个现代PowerPoint演示文稿文件。由于PPT文件结构复杂，无法直接提取文本内容，但您可以使用AI工具进行智能分析。`;
+    } else {
+        content += `文件格式：PowerPoint 97-2003 (.ppt)\n压缩格式：否（二进制格式）\n\n`;
+        content += `内容摘要：这是一个传统PowerPoint演示文稿文件。建议转换为.pptx格式以获得更好的兼容性，或使用AI工具进行内容分析。`;
+    }
+    
+    window.currentFileInfo.content = content;
+}
+
+async function processCSVFileContent(file) {
+    const text = await file.text();
+    window.currentFileInfo.content = `CSV文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n\n内容：\n${text}`;
+}
+
+async function processJSONFileContent(file) {
+    const text = await file.text();
+    try {
+        const jsonObj = JSON.parse(text);
+        const formattedJson = JSON.stringify(jsonObj, null, 2);
+        window.currentFileInfo.content = `JSON文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n\n格式化内容：\n${formattedJson}`;
+    } catch (error) {
+        window.currentFileInfo.content = `JSON文件: ${file.name}\n文件大小: ${formatFileSize(file.size)}\n\n原始内容：\n${text}`;
+    }
+}
+
 // 将函数暴露到全局作用域
 window.showAIToolbar = showAIToolbar;
 window.performOCR = performOCR;
@@ -2587,6 +2779,7 @@ window.translateText = translateText;
 window.summarizeText = summarizeText;
 window.extractKeywords = extractKeywords;
 window.testXLSXLibrary = testXLSXLibrary;
+window.processRemoteFile = processRemoteFile;
 
 // 修改renderMessage函数以支持文件消息
 const originalRenderMessage = renderMessage;
