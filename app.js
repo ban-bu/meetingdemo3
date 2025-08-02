@@ -1211,7 +1211,29 @@ function renderFilteredParticipants(filteredParticipants) {
         return;
     }
     
-    filteredParticipants.forEach((participant, index) => {
+    // 对参与者进行排序：当前用户第一，创建者第二，其他按原顺序
+    const sortedParticipants = [...filteredParticipants].sort((a, b) => {
+        const aIsCurrentUser = a.userId === currentUserId;
+        const bIsCurrentUser = b.userId === currentUserId;
+        const aIsCreator = window.currentRoomInfo && a.userId === window.currentRoomInfo.creatorId;
+        const bIsCreator = window.currentRoomInfo && b.userId === window.currentRoomInfo.creatorId;
+        
+        // 当前用户始终排在第一位
+        if (aIsCurrentUser && !bIsCurrentUser) return -1;
+        if (!aIsCurrentUser && bIsCurrentUser) return 1;
+        
+        // 如果当前用户就是创建者，直接保持顺序
+        if (aIsCurrentUser && bIsCurrentUser) return 0;
+        
+        // 在非当前用户中，创建者排在第二位
+        if (aIsCreator && !bIsCreator) return -1;
+        if (!aIsCreator && bIsCreator) return 1;
+        
+        // 其他按原顺序
+        return 0;
+    });
+    
+    sortedParticipants.forEach((participant, index) => {
         const participantDiv = document.createElement('div');
         participantDiv.className = 'participant';
         
