@@ -165,6 +165,48 @@ function forceMobileInputVisibility() {
                 });
             }
             
+            // 强制显示AI询问和文件上传按钮
+            const inputActions = document.querySelector('.input-actions');
+            if (inputActions) {
+                Object.assign(inputActions.style, {
+                    display: 'flex !important',
+                    gap: '0.5rem',
+                    flexShrink: '0',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    marginTop: '0.5rem'
+                });
+                console.log('✅ 输入操作按钮已强制显示');
+            }
+            
+            // 强制显示所有功能按钮
+            const buttons = document.querySelectorAll('.btn-ask-ai, .btn-summarize, .btn-upload');
+            buttons.forEach(button => {
+                Object.assign(button.style, {
+                    display: 'flex !important',
+                    flex: '1',
+                    minHeight: '44px',
+                    padding: '0.75rem 0.5rem',
+                    border: 'none',
+                    borderRadius: '0.5rem',
+                    background: button.classList.contains('btn-ask-ai') ? '#3b82f6' : 
+                              button.classList.contains('btn-summarize') ? '#10b981' : '#f59e0b',
+                    color: 'white',
+                    cursor: 'pointer',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    textDecoration: 'none',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                });
+            });
+            console.log('✅ 所有功能按钮已强制显示');
+            
             if (messageInput) {
                 Object.assign(messageInput.style, {
                     flex: '1',
@@ -201,9 +243,12 @@ function forceMobileInputVisibility() {
         }
     });
     
-    // 定期检查输入框可见性
+    // 定期检查输入框和按钮可见性
     setInterval(() => {
         const inputContainer = document.querySelector('.input-container');
+        const inputActions = document.querySelector('.input-actions');
+        const buttons = document.querySelectorAll('.btn-ask-ai, .btn-summarize, .btn-upload');
+        
         if (inputContainer) {
             const rect = inputContainer.getBoundingClientRect();
             const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
@@ -219,6 +264,56 @@ function forceMobileInputVisibility() {
                 showInputBoxHint();
             }
         }
+        
+        // 检查按钮是否可见
+        if (inputActions) {
+            const actionsRect = inputActions.getBoundingClientRect();
+            const actionsVisible = actionsRect.top < window.innerHeight && actionsRect.bottom > 0;
+            
+            if (!actionsVisible) {
+                console.log('⚠️ 检测到功能按钮不可见，正在修复...');
+                Object.assign(inputActions.style, {
+                    display: 'flex !important',
+                    gap: '0.5rem',
+                    flexShrink: '0',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    marginTop: '0.5rem'
+                });
+            }
+        }
+        
+        // 检查每个按钮的可见性
+        buttons.forEach(button => {
+            const buttonRect = button.getBoundingClientRect();
+            const buttonVisible = buttonRect.top < window.innerHeight && buttonRect.bottom > 0;
+            
+            if (!buttonVisible) {
+                console.log('⚠️ 检测到按钮不可见，正在修复...');
+                Object.assign(button.style, {
+                    display: 'flex !important',
+                    flex: '1',
+                    minHeight: '44px',
+                    padding: '0.75rem 0.5rem',
+                    border: 'none',
+                    borderRadius: '0.5rem',
+                    background: button.classList.contains('btn-ask-ai') ? '#3b82f6' : 
+                              button.classList.contains('btn-summarize') ? '#10b981' : '#f59e0b',
+                    color: 'white',
+                    cursor: 'pointer',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    textDecoration: 'none',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                });
+            }
+        });
     }, 3000);
     
     }, 1000);
@@ -415,6 +510,8 @@ function switchMobileTab(tab) {
         case 'chat':
         default:
             chatContainer.style.display = 'flex';
+            // 确保聊天页面时按钮可见
+            setTimeout(ensureMobileButtonsVisibility, 100);
             break;
     }
 }
@@ -422,6 +519,8 @@ function switchMobileTab(tab) {
 // 窗口大小改变时重新初始化移动端支持
 function handleResize() {
     initMobileSupport();
+    // 确保按钮可见性
+    ensureMobileButtonsVisibility();
 }
 
 // 添加移动端手势支持
@@ -507,6 +606,52 @@ function initTouchGestures() {
     }
 }
 
+// 确保移动端按钮可见性
+function ensureMobileButtonsVisibility() {
+    if (window.innerWidth <= 768) {
+        const inputActions = document.querySelector('.input-actions');
+        const buttons = document.querySelectorAll('.btn-ask-ai, .btn-summarize, .btn-upload');
+        
+        if (inputActions) {
+            Object.assign(inputActions.style, {
+                display: 'flex !important',
+                gap: '0.5rem',
+                flexShrink: '0',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                justifyContent: 'space-between',
+                width: '100%',
+                marginTop: '0.5rem'
+            });
+        }
+        
+        buttons.forEach(button => {
+            Object.assign(button.style, {
+                display: 'flex !important',
+                flex: '1',
+                minHeight: '44px',
+                padding: '0.75rem 0.5rem',
+                border: 'none',
+                borderRadius: '0.5rem',
+                background: button.classList.contains('btn-ask-ai') ? '#3b82f6' : 
+                          button.classList.contains('btn-summarize') ? '#10b981' : '#f59e0b',
+                color: 'white',
+                cursor: 'pointer',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+            });
+        });
+        
+        console.log('✅ 移动端按钮可见性已确保');
+    }
+}
+
 // 优化移动端输入体验
 function optimizeMobileInput() {
     if (window.innerWidth <= 768) {
@@ -561,6 +706,13 @@ function init() {
     initMobileSupport();
     initTouchGestures();
     optimizeMobileInput();
+    
+    // 确保移动端按钮可见性
+    setTimeout(() => {
+        if (window.innerWidth <= 768) {
+            forceMobileInputVisibility();
+        }
+    }, 2000);
     
     // 检查文档处理库加载状态
     setTimeout(checkDocumentLibraries, 1000); // 延迟1秒确保库完全加载
