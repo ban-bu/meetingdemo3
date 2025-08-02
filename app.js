@@ -220,18 +220,18 @@ function setupRealtimeClient() {
         },
         
         onMessageReceived: async (message) => {
-            console.log('收到新消息:', {
-                type: message.type,
-                text: message.text ? message.text.substring(0, 30) + '...' : '',
-                isAIQuestion: message.isAIQuestion,
-                userId: message.userId,
-                author: message.author
-            });
+            console.log('收到新消息:', message);
             
             // 避免重复显示自己发送的消息
             if (message.userId !== currentUserId) {
                 // 检查是否是重复的AI消息（防止AI回复重复显示）
                 if (message.userId === 'ai-assistant') {
+                    // 如果这个AI回复是当前用户触发的，跳过（因为本地已经显示了）
+                    if (message.originUserId === currentUserId) {
+                        console.log('跳过自己触发的AI消息重复显示:', message.text.substring(0, 30) + '...');
+                        return;
+                    }
+                    
                     // 简化的重复检测：检查相同内容的AI消息（最近1分钟内）
                     const isDuplicate = messages.some(existingMsg => 
                         existingMsg.type === 'ai' && 
@@ -707,12 +707,7 @@ function addMessage(type, text, author = 'AI助手', userId = null, shouldBroadc
     
     // 通过WebSocket发送AI消息给其他用户（只有本地产生的消息才发送）
     if (shouldBroadcast && isRealtimeEnabled && window.realtimeClient) {
-        console.log('发送消息到其他用户:', {
-            type: message.type,
-            text: message.text.substring(0, 30) + '...',
-            isAIQuestion: message.isAIQuestion,
-            userId: message.userId
-        });
+
         const sent = window.realtimeClient.sendMessage(message);
         if (!sent) {
             // WebSocket发送失败，使用本地存储备份
@@ -959,13 +954,12 @@ async function submitAIQuestion() {
             time: new Date().toLocaleTimeString('zh-CN', { 
                 hour: '2-digit', 
                 minute: '2-digit' 
-            })
+            }),
+            originUserId: currentUserId // 标记这个AI回复是由当前用户触发的
         };
         
         // 发送给其他用户（不影响本地显示）
         if (isRealtimeEnabled && window.realtimeClient) {
-            // 添加标记以防止本地重复显示
-            aiMessage.isFromCurrentUser = true;
             window.realtimeClient.sendMessage(aiMessage);
         }
         

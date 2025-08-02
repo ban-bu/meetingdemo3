@@ -446,7 +446,7 @@ io.on('connection', (socket) => {
     // 发送消息
     socket.on('sendMessage', async (messageData) => {
         try {
-            const { roomId, type, text, author, userId, file, isAIQuestion } = messageData;
+            const { roomId, type, text, author, userId, file, isAIQuestion, originUserId } = messageData;
             
             if (!roomId || !author || !userId) {
                 socket.emit('error', '消息格式错误');
@@ -465,6 +465,7 @@ io.on('connection', (socket) => {
                 }),
                 file: file || null,
                 isAIQuestion: isAIQuestion || false, // 保留isAIQuestion属性
+                originUserId: originUserId || null, // 保留originUserId属性
                 timestamp: new Date()
             };
             
