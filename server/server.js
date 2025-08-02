@@ -137,6 +137,8 @@ const messageSchema = new mongoose.Schema({
         url: String
     },
     originalFile: String,
+    isAIQuestion: { type: Boolean, default: false }, // AI问题标记
+    originUserId: String, // AI回复的触发用户ID
     timestamp: { type: Date, default: Date.now, expires: '30d' } // 30天后自动删除
 });
 
@@ -478,14 +480,7 @@ io.on('connection', (socket) => {
             // 更新参与者最后活跃时间
             await dataService.updateParticipant(roomId, userId, { lastSeen: new Date() });
             
-            console.log(`🏠 房间 ${roomId} 收到新消息:`, {
-                type: message.type,
-                text: message.text?.substring(0, 30) + '...',
-                isAIQuestion: message.isAIQuestion,
-                originUserId: message.originUserId,
-                userId: message.userId,
-                author: message.author
-            });
+            console.log(`房间 ${roomId} 收到新消息:`, message.text?.substring(0, 50) + '...');
             
         } catch (error) {
             console.error('发送消息失败:', error);
