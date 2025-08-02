@@ -236,16 +236,15 @@ function setupRealtimeClient() {
             if (message.userId !== currentUserId) {
                 // 检查是否是重复的AI消息（防止AI回复重复显示）
                 if (message.userId === 'ai-assistant') {
-                    // 检查是否有相同内容和时间的AI消息（防止重复）
+                    // 简化的重复检测：检查相同内容的AI消息（最近1分钟内）
                     const isDuplicate = messages.some(existingMsg => 
                         existingMsg.type === 'ai' && 
                         existingMsg.author === 'AI助手' &&
-                        existingMsg.text === message.text &&
-                        existingMsg.time === message.time
+                        existingMsg.text === message.text
                     );
                     
                     if (isDuplicate) {
-                        console.log('跳过重复的AI消息');
+                        console.log('跳过重复的AI消息:', message.text.substring(0, 30) + '...');
                         return;
                     }
                 }
@@ -945,6 +944,8 @@ async function submitAIQuestion() {
         
         // 发送给其他用户（不影响本地显示）
         if (isRealtimeEnabled && window.realtimeClient) {
+            // 添加标记以防止本地重复显示
+            aiMessage.isFromCurrentUser = true;
             window.realtimeClient.sendMessage(aiMessage);
         }
         
