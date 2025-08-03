@@ -816,7 +816,121 @@ function initVoiceCall() {
         return;
     }
     
+    // 测试麦克风权限
+    testMicrophonePermission();
+    
     console.log('✅ 语音通话功能初始化完成');
+}
+
+// 测试麦克风权限
+async function testMicrophonePermission() {
+    const testMicBtn = document.getElementById('testMicBtn');
+    
+    try {
+        console.log('🔍 测试麦克风权限...');
+        
+        // 更新按钮状态
+        if (testMicBtn) {
+            testMicBtn.classList.add('testing');
+            testMicBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            testMicBtn.title = '正在测试麦克风...';
+        }
+        
+        // 检查浏览器支持
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('浏览器不支持getUserMedia API');
+        }
+        
+        // 检查权限API是否可用
+        if (navigator.permissions && navigator.permissions.query) {
+            const permissions = await navigator.permissions.query({ name: 'microphone' });
+            console.log('麦克风权限状态:', permissions.state);
+            
+            if (permissions.state === 'denied') {
+                console.warn('⚠️ 麦克风权限已被拒绝');
+                showToast('麦克风权限被拒绝，请在浏览器设置中允许麦克风访问', 'warning');
+                return;
+            }
+        }
+        
+        // 尝试获取麦克风权限（不保存流）
+        console.log('正在请求麦克风权限...');
+        const testStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        });
+        
+        // 立即停止测试流
+        testStream.getTracks().forEach(track => track.stop());
+        
+        console.log('✅ 麦克风权限测试通过');
+        showToast('✅ 麦克风权限测试通过，可以正常使用语音通话', 'success');
+        
+        // 更新按钮状态为成功
+        if (testMicBtn) {
+            testMicBtn.classList.remove('testing');
+            testMicBtn.classList.add('success');
+            testMicBtn.innerHTML = '<i class="fas fa-check"></i>';
+            testMicBtn.title = '麦克风权限正常';
+            testMicBtn.style.background = '#10b981';
+            
+            // 3秒后恢复原始状态
+            setTimeout(() => {
+                testMicBtn.classList.remove('success');
+                testMicBtn.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+                testMicBtn.title = '测试麦克风';
+                testMicBtn.style.background = '';
+            }, 3000);
+        }
+        
+    } catch (error) {
+        console.warn('⚠️ 麦克风权限测试失败:', error);
+        
+        let warningMessage = '麦克风权限测试失败';
+        
+        if (error.name === 'NotAllowedError') {
+            warningMessage = '麦克风权限被拒绝，请点击地址栏的麦克风图标并选择"允许"';
+        } else if (error.name === 'NotFoundError') {
+            warningMessage = '未找到麦克风设备，请检查麦克风连接';
+        } else if (error.name === 'NotSupportedError') {
+            warningMessage = '浏览器不支持麦克风功能';
+        } else if (error.name === 'NotReadableError') {
+            warningMessage = '麦克风被其他应用占用，请关闭其他使用麦克风的应用';
+        } else if (error.name === 'OverconstrainedError') {
+            warningMessage = '麦克风配置不兼容，请尝试刷新页面';
+        } else {
+            warningMessage = `麦克风测试失败: ${error.message}`;
+        }
+        
+        showToast(warningMessage, 'error');
+        
+        // 更新按钮状态为失败
+        if (testMicBtn) {
+            testMicBtn.classList.remove('testing');
+            testMicBtn.classList.add('error');
+            testMicBtn.innerHTML = '<i class="fas fa-times"></i>';
+            testMicBtn.title = '麦克风权限测试失败';
+            testMicBtn.style.background = '#ef4444';
+            
+            // 3秒后恢复原始状态
+            setTimeout(() => {
+                testMicBtn.classList.remove('error');
+                testMicBtn.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+                testMicBtn.title = '测试麦克风';
+                testMicBtn.style.background = '';
+            }, 3000);
+        }
+        
+        // 显示详细的错误信息
+        console.error('详细错误信息:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
+    }
 }
 
 // 切换语音通话状态
@@ -833,7 +947,21 @@ async function startVoiceCall() {
     try {
         console.log('📞 开始语音通话...');
         
+        // 检查浏览器支持
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('浏览器不支持getUserMedia API');
+        }
+        
+        // 检查麦克风权限
+        const permissions = await navigator.permissions.query({ name: 'microphone' });
+        console.log('麦克风权限状态:', permissions.state);
+        
+        if (permissions.state === 'denied') {
+            throw new Error('麦克风权限已被拒绝，请在浏览器设置中允许麦克风访问');
+        }
+        
         // 获取麦克风权限
+        console.log('正在请求麦克风权限...');
         localStream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 echoCancellation: true,
@@ -841,6 +969,8 @@ async function startVoiceCall() {
                 autoGainControl: true
             }
         });
+        
+        console.log('✅ 麦克风权限获取成功');
         
         isInCall = true;
         callStartTime = Date.now();
@@ -864,7 +994,31 @@ async function startVoiceCall() {
         
     } catch (error) {
         console.error('❌ 启动语音通话失败:', error);
-        showToast('无法启动语音通话，请检查麦克风权限', 'error');
+        
+        let errorMessage = '无法启动语音通话';
+        
+        if (error.name === 'NotAllowedError') {
+            errorMessage = '麦克风权限被拒绝，请点击地址栏的麦克风图标并选择"允许"';
+        } else if (error.name === 'NotFoundError') {
+            errorMessage = '未找到麦克风设备，请检查麦克风连接';
+        } else if (error.name === 'NotSupportedError') {
+            errorMessage = '浏览器不支持语音通话功能';
+        } else if (error.name === 'NotReadableError') {
+            errorMessage = '麦克风被其他应用占用，请关闭其他使用麦克风的应用';
+        } else if (error.name === 'OverconstrainedError') {
+            errorMessage = '麦克风配置不兼容，请尝试刷新页面';
+        } else {
+            errorMessage = `启动语音通话失败: ${error.message}`;
+        }
+        
+        showToast(errorMessage, 'error');
+        
+        // 显示详细的错误信息
+        console.error('详细错误信息:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
     }
 }
 
@@ -913,7 +1067,21 @@ async function acceptCall() {
     try {
         console.log('📞 接受通话邀请...');
         
+        // 检查浏览器支持
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('浏览器不支持getUserMedia API');
+        }
+        
+        // 检查麦克风权限
+        const permissions = await navigator.permissions.query({ name: 'microphone' });
+        console.log('麦克风权限状态:', permissions.state);
+        
+        if (permissions.state === 'denied') {
+            throw new Error('麦克风权限已被拒绝，请在浏览器设置中允许麦克风访问');
+        }
+        
         // 获取麦克风权限
+        console.log('正在请求麦克风权限...');
         localStream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 echoCancellation: true,
@@ -921,6 +1089,8 @@ async function acceptCall() {
                 autoGainControl: true
             }
         });
+        
+        console.log('✅ 麦克风权限获取成功');
         
         isInCall = true;
         callStartTime = Date.now();
@@ -1060,6 +1230,22 @@ function hideIncomingCallModal() {
 function updateCallUI() {
     updateCallParticipants();
     updateCallDuration();
+}
+
+// 更新通话时长显示
+function updateCallDuration() {
+    const durationElement = document.getElementById('callDuration');
+    if (!durationElement) return;
+    
+    if (callStartTime && isInCall) {
+        const duration = Math.floor((Date.now() - callStartTime) / 1000);
+        const minutes = Math.floor(duration / 60);
+        const seconds = duration % 60;
+        const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        durationElement.textContent = timeString;
+    } else {
+        durationElement.textContent = '00:00';
+    }
 }
 
 // 更新通话参与者列表
@@ -1345,8 +1531,6 @@ function handleIceCandidate(data) {
             showToast('💡 提示：现在支持多端实时聊天！配置WebSocket服务器后即可使用', 'info');
         }, 3000);
     }
-}
-
 // 设置事件监听器
 function setupEventListeners() {
     messageInput.addEventListener('keydown', handleKeyDown);
@@ -1521,7 +1705,7 @@ function setupRealtimeClient() {
                     if (isDuplicateFile) {
                         console.log('跳过重复的文件消息:', message.file.name);
                         return;
-                }
+                    }
                 
                 // 处理文件消息：如果有base64数据但没有URL，创建可用的URL
                     if (message.file && message.file.base64 && !message.file.url) {

@@ -127,10 +127,21 @@
                             <i class="fas fa-file-alt"></i> 生成总结
                         </button>
                         <button class="btn-upload" onclick="triggerFileUpload()">
-                    <i class="fas fa-upload"></i> 上传文件
-                </button>
-                <input type="file" id="fileInput" style="display: none" multiple>
-
+                            <i class="fas fa-upload"></i> 上传文件
+                        </button>
+                        <button class="btn-voice" id="voiceBtn" onclick="toggleVoiceRecording()" title="语音录制">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        <button class="btn-transcribe" id="transcribeBtn" onclick="toggleTranscription()" title="实时转录">
+                            <i class="fas fa-closed-captioning"></i>
+                        </button>
+                        <button class="btn-call" id="callBtn" onclick="toggleVoiceCall()" title="语音通话">
+                            <i class="fas fa-phone"></i>
+                        </button>
+                        <button class="btn-test-mic" id="testMicBtn" onclick="testMicrophonePermission()" title="测试麦克风">
+                            <i class="fas fa-microphone-slash"></i>
+                        </button>
+                        <input type="file" id="fileInput" style="display: none" multiple>
                     </div>
                     <div class="upload-zone" id="uploadZone" style="display: none;">
                         <div class="upload-zone-content">
@@ -252,6 +263,106 @@
             <div class="modal-footer">
                 <button class="btn-secondary" onclick="closeAskAIModal()">取消</button>
                 <button class="btn-primary" onclick="submitAIQuestion()">发送</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 语音录制对话框 -->
+    <div class="modal" id="voiceModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>语音录制</h3>
+                <button class="modal-close" onclick="closeVoiceModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="voice-recorder">
+                    <div class="voice-status" id="voiceStatus">
+                        <i class="fas fa-microphone"></i>
+                        <span>点击开始录制</span>
+                    </div>
+                    <div class="voice-controls">
+                        <button class="btn-record" id="recordBtn" onclick="startRecording()">
+                            <i class="fas fa-microphone"></i> 开始录制
+                        </button>
+                        <button class="btn-stop" id="stopBtn" onclick="stopRecording()" style="display: none;">
+                            <i class="fas fa-stop"></i> 停止录制
+                        </button>
+                        <button class="btn-play" id="playBtn" onclick="playRecording()" style="display: none;">
+                            <i class="fas fa-play"></i> 播放
+                        </button>
+                    </div>
+                    <div class="voice-transcript" id="voiceTranscript" style="display: none;">
+                        <h4>转录文本</h4>
+                        <textarea id="transcriptText" placeholder="转录文本将在这里显示..." rows="4"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeVoiceModal()">取消</button>
+                <button class="btn-primary" id="sendVoiceBtn" onclick="sendVoiceMessage()" style="display: none;">
+                    <i class="fas fa-paper-plane"></i> 发送语音
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 实时转录面板 -->
+    <div class="transcription-panel" id="transcriptionPanel" style="display: none;">
+        <div class="transcription-header">
+            <h3><i class="fas fa-closed-captioning"></i> 实时转录</h3>
+            <button class="transcription-close" onclick="closeTranscription()">&times;</button>
+        </div>
+        <div class="transcription-content" id="transcriptionContent">
+            <div class="transcription-status">
+                <i class="fas fa-microphone"></i>
+                <span>正在监听...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 语音通话面板 -->
+    <div class="voice-call-panel" id="voiceCallPanel" style="display: none;">
+        <div class="call-header">
+            <h3><i class="fas fa-phone"></i> 语音通话</h3>
+            <div class="call-info">
+                <span id="callDuration">00:00</span>
+                <span id="callParticipants">0 人参与</span>
+            </div>
+            <button class="call-close" onclick="endVoiceCall()">&times;</button>
+        </div>
+        <div class="call-content">
+            <div class="call-participants" id="callParticipantsList">
+                <!-- 通话参与者列表 -->
+            </div>
+            <div class="call-controls">
+                <button class="call-control-btn" id="muteBtn" onclick="toggleMute()" title="静音">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <button class="call-control-btn" id="speakerBtn" onclick="toggleSpeaker()" title="扬声器">
+                    <i class="fas fa-volume-up"></i>
+                </button>
+                <button class="call-control-btn call-end" onclick="endVoiceCall()" title="结束通话">
+                    <i class="fas fa-phone-slash"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 来电提示 -->
+    <div class="incoming-call-modal" id="incomingCallModal" style="display: none;">
+        <div class="incoming-call-content">
+            <div class="caller-info">
+                <i class="fas fa-phone"></i>
+                <h4 id="incomingCallerName">来电</h4>
+                <p>语音通话邀请</p>
+            </div>
+            <div class="incoming-call-controls">
+                <button class="btn-accept" onclick="acceptCall()">
+                    <i class="fas fa-phone"></i> 接听
+                </button>
+                <button class="btn-reject" onclick="rejectCall()">
+                    <i class="fas fa-phone-slash"></i> 拒绝
+                </button>
             </div>
         </div>
     </div>

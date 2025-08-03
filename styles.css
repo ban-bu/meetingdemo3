@@ -2040,3 +2040,357 @@ body {
         min-height: 200px;
     }
 }
+
+/* 语音通话样式 */
+.btn-call {
+    background: #059669;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-call:hover {
+    background: #047857;
+    transform: translateY(-1px);
+}
+
+.btn-call.in-call {
+    background: #dc2626;
+    animation: pulse 1s infinite;
+}
+
+.btn-test-mic {
+    background: #6b7280;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-test-mic:hover {
+    background: #4b5563;
+    transform: translateY(-1px);
+}
+
+.btn-test-mic.testing {
+    background: #f59e0b;
+    animation: pulse 1s infinite;
+}
+
+.btn-test-mic.success {
+    background: #10b981;
+}
+
+.btn-test-mic.error {
+    background: #ef4444;
+}
+
+/* 语音通话面板 */
+.voice-call-panel {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 350px;
+    max-height: 500px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+    z-index: 10000;
+    border: 1px solid #e5e7eb;
+}
+
+.call-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+    border-radius: 12px 12px 0 0;
+}
+
+.call-header h3 {
+    margin: 0;
+    font-size: 16px;
+    color: #374151;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.call-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.call-info span {
+    margin: 2px 0;
+}
+
+.call-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #6b7280;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.call-close:hover {
+    color: #374151;
+}
+
+.call-content {
+    padding: 20px;
+}
+
+.call-participants {
+    margin-bottom: 20px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.call-participant {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #f3f4f6;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.call-participant-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #3b82f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.call-participant-info {
+    flex: 1;
+}
+
+.call-participant-name {
+    font-weight: 500;
+    color: #374151;
+    font-size: 14px;
+}
+
+.call-participant-status {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.call-participant-status.speaking {
+    color: #059669;
+    font-weight: 500;
+}
+
+.call-controls {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.call-control-btn {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.call-control-btn:not(.call-end) {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+.call-control-btn:not(.call-end):hover {
+    background: #e5e7eb;
+}
+
+.call-control-btn.muted {
+    background: #dc2626;
+    color: white;
+}
+
+.call-control-btn.call-end {
+    background: #dc2626;
+    color: white;
+}
+
+.call-control-btn.call-end:hover {
+    background: #b91c1c;
+}
+
+/* 来电提示 */
+.incoming-call-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10001;
+}
+
+.incoming-call-content {
+    background: white;
+    border-radius: 12px;
+    padding: 30px;
+    text-align: center;
+    max-width: 300px;
+    width: 90%;
+}
+
+.caller-info {
+    margin-bottom: 30px;
+}
+
+.caller-info i {
+    font-size: 48px;
+    color: #059669;
+    margin-bottom: 15px;
+}
+
+.caller-info h4 {
+    margin: 0 0 10px 0;
+    color: #374151;
+    font-size: 18px;
+}
+
+.caller-info p {
+    margin: 0;
+    color: #6b7280;
+    font-size: 14px;
+}
+
+.incoming-call-controls {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.btn-accept, .btn-reject {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-accept {
+    background: #059669;
+    color: white;
+}
+
+.btn-accept:hover {
+    background: #047857;
+}
+
+.btn-reject {
+    background: #dc2626;
+    color: white;
+}
+
+.btn-reject:hover {
+    background: #b91c1c;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+    .voice-call-panel {
+        bottom: 80px;
+        right: 10px;
+        left: 10px;
+        width: auto;
+        max-height: 400px;
+    }
+    
+    .call-controls {
+        gap: 10px;
+    }
+    
+    .call-control-btn {
+        width: 45px;
+        height: 45px;
+        font-size: 16px;
+    }
+    
+    .incoming-call-content {
+        margin: 20px;
+        padding: 25px;
+    }
+    
+    .btn-test-mic {
+        background: #6b7280;
+        color: white;
+        border: none;
+        padding: 6px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 10px;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+    }
+    
+    .btn-test-mic:hover {
+        background: #4b5563;
+    }
+    
+    .btn-test-mic.testing {
+        background: #f59e0b;
+        animation: pulse 1s infinite;
+    }
+    
+    .btn-test-mic.success {
+        background: #10b981;
+    }
+    
+    .btn-test-mic.error {
+        background: #ef4444;
+    }
+}

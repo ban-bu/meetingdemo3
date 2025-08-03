@@ -790,6 +790,18 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// Railway健康检查端点
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        service: 'vibe-meeting',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        environment: process.env.NODE_ENV || 'development',
+        version: '1.0.0'
+    });
+});
+
 app.get('/api/rooms/:roomId/messages', async (req, res) => {
     try {
         const { roomId } = req.params;
