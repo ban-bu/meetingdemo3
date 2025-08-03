@@ -5,6 +5,14 @@ const CONFIG = {
     MODEL: "GPT-4.1-mini"
 };
 
+// 全局移动端检测函数
+function isMobileDevice() {
+    return window.innerWidth <= 768 || 
+           /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+           (window.innerWidth <= 1024 && window.innerHeight > window.innerWidth) ||
+           (window.innerWidth <= 480 && window.innerHeight > window.innerWidth);
+}
+
 // 全局状态
 let messages = [];
 let participants = [];
@@ -126,7 +134,7 @@ function initMobileSupport() {
 
 // 强制确保移动端输入框可见
 function forceMobileInputVisibility() {
-    if (window.innerWidth <= 768) {
+    if (isMobileDevice()) {
         // 延迟执行，确保DOM完全加载
         setTimeout(() => {
             const inputContainer = document.querySelector('.input-container');
@@ -586,7 +594,7 @@ function initTouchGestures() {
 
 // 确保移动端按钮可见性
 function ensureMobileButtonsVisibility() {
-    if (window.innerWidth <= 768) {
+    if (isMobileDevice()) {
         // 检查是否在欢迎页面
         const usernameModal = document.getElementById('usernameModal');
         const isOnWelcomePage = usernameModal && (usernameModal.style.display === 'block' || usernameModal.style.display === 'flex');
@@ -651,7 +659,7 @@ function ensureMobileButtonsVisibility() {
 
 // 优化移动端输入体验
 function optimizeMobileInput() {
-    if (window.innerWidth <= 768) {
+    if (isMobileDevice()) {
         const messageInput = document.getElementById('messageInput');
         
         // 移动端输入框获得焦点时，调整视图
@@ -705,7 +713,7 @@ function init() {
     optimizeMobileInput();
     
         // 移动端输入框管理
-    if (window.innerWidth <= 768) {
+    if (isMobileDevice()) {
         // 检查欢迎页面状态并相应处理输入框
         const checkWelcomePageAndInput = () => {
             const inputContainer = document.querySelector('.input-container');
@@ -735,13 +743,23 @@ function init() {
         
         // 定期检查状态变化
         setInterval(checkWelcomePageAndInput, 1000);
+        
+        // 监听屏幕方向变化
+        window.addEventListener('orientationchange', () => {
+            setTimeout(checkWelcomePageAndInput, 100);
+        });
+        
+        // 监听窗口大小变化
+        window.addEventListener('resize', () => {
+            setTimeout(checkWelcomePageAndInput, 100);
+        });
     }
 
 
     
     // 确保移动端按钮可见性
     setTimeout(() => {
-        if (window.innerWidth <= 768) {
+        if (isMobileDevice()) {
             // 检查是否在欢迎页面，如果是则隐藏输入框
             const usernameModal = document.getElementById('usernameModal');
             const isOnWelcomePage = usernameModal && (usernameModal.style.display === 'block' || usernameModal.style.display === 'flex');
@@ -762,7 +780,7 @@ function init() {
                 forceMobileInputVisibility();
             }
         }
-    }, 1000); // 减少延迟时间
+    }, 1000);
     
     // 检查文档处理库加载状态
     setTimeout(checkDocumentLibraries, 1000); // 延迟1秒确保库完全加载
@@ -1340,7 +1358,7 @@ function setUsername() {
     usernameModal.style.display = 'none';
     
     // 在移动端，确保输入框在用户加入房间后显示
-    if (window.innerWidth <= 768) {
+    if (isMobileDevice()) {
         setTimeout(() => {
             const inputContainer = document.querySelector('.input-container');
             if (inputContainer) {
@@ -1359,7 +1377,7 @@ function closeUsernameModal() {
     document.body.classList.remove('modal-open'); // 移除modal-open类
     
     // 在移动端，确保输入框在用户加入房间后显示
-    if (window.innerWidth <= 768) {
+    if (isMobileDevice()) {
         setTimeout(() => {
             const inputContainer = document.querySelector('.input-container');
             if (inputContainer) {
