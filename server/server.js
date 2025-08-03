@@ -545,14 +545,14 @@ io.on('connection', (socket) => {
                 text: text || '',
                 author,
                 userId,
-                time: new Date().toLocaleTimeString('zh-CN', { 
+                time: messageData.time || new Date().toLocaleTimeString('zh-CN', { 
                     hour: '2-digit', 
                     minute: '2-digit' 
                 }),
+                timestamp: messageData.timestamp ? new Date(messageData.timestamp) : new Date(),
                 file: file || null,
                 isAIQuestion: isAIQuestion || false, // 保留isAIQuestion属性
                 originUserId: originUserId || null, // 保留originUserId属性
-                timestamp: new Date()
             };
             
             // 保存消息

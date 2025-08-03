@@ -1004,6 +1004,26 @@ function setupRealtimeClient() {
                     }
                 }
                 
+                // 确保接收到的消息有时间戳，如果没有则添加
+                if (!message.timestamp && message.time) {
+                    // 如果只有time字段，尝试解析为时间戳
+                    try {
+                        const timeParts = message.time.split(':');
+                        if (timeParts.length === 2) {
+                            const now = new Date();
+                            const messageTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 
+                                parseInt(timeParts[0]), parseInt(timeParts[1]));
+                            message.timestamp = messageTime.getTime();
+                        }
+                    } catch (e) {
+                        // 如果解析失败，使用当前时间
+                        message.timestamp = Date.now();
+                    }
+                } else if (!message.timestamp) {
+                    // 如果完全没有时间信息，使用当前时间
+                    message.timestamp = Date.now();
+                }
+                
                 messages.push(message);
                 renderMessage(message);
                 scrollToBottom();
@@ -1488,6 +1508,7 @@ function addMessage(type, text, author = 'AI助手', userId = null, shouldBroadc
         author,
         userId: userId || (type === 'ai' ? 'ai-assistant' : 'unknown'),
         isAIQuestion: isAIQuestion || false,
+        timestamp: Date.now(), // 使用UTC时间戳
         time: new Date().toLocaleTimeString('zh-CN', { 
             hour: '2-digit', 
             minute: '2-digit' 
@@ -1548,6 +1569,20 @@ function renderMessage(message) {
         messageText = `<div class="message-text">${aiQuestionPrefix}${message.text}</div>`;
     }
     
+    // 处理时间显示：如果有时间戳，使用本地时区格式化；否则使用原始时间
+    let displayTime;
+    if (message.timestamp) {
+        displayTime = new Date(message.timestamp).toLocaleTimeString('zh-CN', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+    } else {
+        displayTime = message.time || new Date().toLocaleTimeString('zh-CN', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+    }
+    
     messageDiv.innerHTML = `
         <div class="message-avatar" style="background-color: ${avatarColor}">${avatarContent}</div>
         <div class="message-content">
@@ -1555,7 +1590,7 @@ function renderMessage(message) {
                 <span class="message-author" ${isCurrentUser ? 'style="color: #3b82f6; font-weight: 600;"' : ''}>
                     ${message.author} ${isCurrentUser ? '(我)' : ''}
                 </span>
-                <span class="message-time">${message.time}</span>
+                <span class="message-time">${displayTime}</span>
             </div>
             ${messageText}
         </div>
@@ -2631,6 +2666,7 @@ async function processFile(file) {
         },
         author: currentUsername,
         userId: currentUserId,
+        timestamp: Date.now(), // 使用UTC时间戳
         time: new Date().toLocaleTimeString('zh-CN', { 
             hour: '2-digit', 
             minute: '2-digit' 
@@ -2949,6 +2985,20 @@ function renderFileMessage(message) {
     const avatarColor = message.author === 'AI助手' ? '#6b7280' : getAvatarColor(message.author);
     const initials = message.author.charAt(0).toUpperCase();
     
+    // 处理时间显示：如果有时间戳，使用本地时区格式化；否则使用原始时间
+    let displayTime;
+    if (message.timestamp) {
+        displayTime = new Date(message.timestamp).toLocaleTimeString('zh-CN', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+    } else {
+        displayTime = message.time || new Date().toLocaleTimeString('zh-CN', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+    }
+    
     messageDiv.innerHTML = `
         <div class="message-avatar" style="background-color: ${avatarColor}">
             ${initials}
@@ -2956,7 +3006,7 @@ function renderFileMessage(message) {
         <div class="message-content">
             <div class="message-header">
                 <span class="message-author">${message.author}</span>
-                <span class="message-time">${message.time}</span>
+                <span class="message-time">${displayTime}</span>
             </div>
             ${renderFileContent(message)}
         </div>
@@ -3007,6 +3057,7 @@ function addLoadingMessage(text) {
         text: text,
         author: 'AI助手',
         userId: 'ai-assistant',
+        timestamp: Date.now(), // 使用UTC时间戳
         time: new Date().toLocaleTimeString('zh-CN', { 
             hour: '2-digit', 
             minute: '2-digit' 
