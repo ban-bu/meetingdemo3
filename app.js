@@ -148,10 +148,6 @@ function forceMobileInputVisibility() {
             
             // 确保输入框在正常聊天时始终可见
             if (inputContainer) {
-                inputContainer.style.display = 'flex';
-            }
-            
-            if (inputContainer) {
                 // 强制设置样式
                 Object.assign(inputContainer.style, {
                     position: 'fixed',
@@ -167,10 +163,10 @@ function forceMobileInputVisibility() {
                     gap: '0.5rem',
                     boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.1)',
                     minHeight: '140px',
-                    maxHeight: '200px'
+                    maxHeight: '200px',
+                    visibility: 'visible',
+                    opacity: '1'
                 });
-                
-                console.log('✅ 输入框容器已强制显示');
             }
             
             if (inputWrapper) {
@@ -195,7 +191,7 @@ function forceMobileInputVisibility() {
                     width: '100%',
                     marginTop: '0.5rem'
                 });
-                console.log('✅ 输入操作按钮已强制显示');
+    
             }
             
             // 强制显示所有功能按钮
@@ -222,7 +218,7 @@ function forceMobileInputVisibility() {
                     textOverflow: 'ellipsis'
                 });
             });
-            console.log('✅ 所有功能按钮已强制显示');
+
             
             if (messageInput) {
                 Object.assign(messageInput.style, {
@@ -649,7 +645,7 @@ function ensureMobileButtonsVisibility() {
             });
         });
         
-        console.log('✅ 移动端按钮可见性已确保');
+
     }
 }
 
@@ -708,6 +704,41 @@ function init() {
     initTouchGestures();
     optimizeMobileInput();
     
+        // 移动端输入框管理
+    if (window.innerWidth <= 768) {
+        // 检查欢迎页面状态并相应处理输入框
+        const checkWelcomePageAndInput = () => {
+            const inputContainer = document.querySelector('.input-container');
+            const usernameModal = document.getElementById('usernameModal');
+            const isOnWelcomePage = usernameModal && (usernameModal.style.display === 'block' || usernameModal.style.display === 'flex');
+            
+            if (inputContainer) {
+                if (isOnWelcomePage) {
+                    // 在欢迎页面时隐藏输入框
+                    inputContainer.style.display = 'none';
+                } else {
+                    // 在正常聊天时显示输入框
+                    inputContainer.style.display = 'flex';
+                    inputContainer.style.visibility = 'visible';
+                    inputContainer.style.opacity = '1';
+                    inputContainer.style.position = 'fixed';
+                    inputContainer.style.bottom = '0';
+                    inputContainer.style.left = '0';
+                    inputContainer.style.right = '0';
+                    inputContainer.style.zIndex = '9999';
+                }
+            }
+        };
+        
+        // 初始检查
+        setTimeout(checkWelcomePageAndInput, 500);
+        
+        // 定期检查状态变化
+        setInterval(checkWelcomePageAndInput, 1000);
+    }
+
+
+    
     // 确保移动端按钮可见性
     setTimeout(() => {
         if (window.innerWidth <= 768) {
@@ -725,11 +756,13 @@ function init() {
                 const inputContainer = document.querySelector('.input-container');
                 if (inputContainer) {
                     inputContainer.style.display = 'flex';
+                    inputContainer.style.visibility = 'visible';
+                    inputContainer.style.opacity = '1';
                 }
                 forceMobileInputVisibility();
             }
         }
-    }, 2000);
+    }, 1000); // 减少延迟时间
     
     // 检查文档处理库加载状态
     setTimeout(checkDocumentLibraries, 1000); // 延迟1秒确保库完全加载
@@ -740,6 +773,8 @@ function init() {
     showUsernameModal();
     registerServiceWorker();
     setupOfflineIndicator();
+    
+
     
     // 监听localStorage变化，实现跨标签页同步
     window.addEventListener('storage', handleStorageChange);
@@ -935,18 +970,18 @@ function setupRealtimeClient() {
                     if (isDuplicateFile) {
                         console.log('跳过重复的文件消息:', message.file.name);
                         return;
-                    }
-                    
-                    // 处理文件消息：如果有base64数据但没有URL，创建可用的URL
+                }
+                
+                // 处理文件消息：如果有base64数据但没有URL，创建可用的URL
                     if (message.file && message.file.base64 && !message.file.url) {
-                        try {
-                            // 将base64转换为Blob并创建URL
-                            const response = await fetch(message.file.base64);
-                            const blob = await response.blob();
-                            message.file.url = URL.createObjectURL(blob);
-                            console.log('为接收的文件创建了可用URL');
-                        } catch (error) {
-                            console.error('处理接收的文件失败:', error);
+                    try {
+                        // 将base64转换为Blob并创建URL
+                        const response = await fetch(message.file.base64);
+                        const blob = await response.blob();
+                        message.file.url = URL.createObjectURL(blob);
+                        console.log('为接收的文件创建了可用URL');
+                    } catch (error) {
+                        console.error('处理接收的文件失败:', error);
                         }
                     }
                 }
@@ -1083,7 +1118,7 @@ function scrollToBottom() {
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }, 100);
     } else {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 }
 
@@ -1310,6 +1345,8 @@ function setUsername() {
             const inputContainer = document.querySelector('.input-container');
             if (inputContainer) {
                 inputContainer.style.display = 'flex';
+                inputContainer.style.visibility = 'visible';
+                inputContainer.style.opacity = '1';
                 forceMobileInputVisibility();
             }
         }, 500);
@@ -1327,6 +1364,8 @@ function closeUsernameModal() {
             const inputContainer = document.querySelector('.input-container');
             if (inputContainer) {
                 inputContainer.style.display = 'flex';
+                inputContainer.style.visibility = 'visible';
+                inputContainer.style.opacity = '1';
                 forceMobileInputVisibility();
             }
         }, 500);
@@ -2619,43 +2658,43 @@ async function processFile(file) {
     // 根据文件类型处理内容
     if (supportsAI) {
         // 支持AI分析的文件类型
-        if (file.type === 'text/plain') {
-            await processTextFile(file, fileMessage);
-        } else if (file.type.startsWith('image/')) {
-            // 图片文件 - 设置文件信息但不自动处理
-            window.currentFileInfo = {
-                name: file.name,
-                url: URL.createObjectURL(file),
-                type: file.type
-            };
-            showAIToolbar(file.name, window.currentFileInfo.url, file.type);
-        } else if (file.type === 'application/pdf' || file.type.includes('word')) {
-            // PDF和Word文档 - 提取文本内容
-            if (file.type === 'application/pdf') {
-                await processPDFDocument(file, fileMessage);
-            } else if (file.type.includes('word')) {
-                await processWordDocument(file, fileMessage);
-            }
+    if (file.type === 'text/plain') {
+        await processTextFile(file, fileMessage);
+    } else if (file.type.startsWith('image/')) {
+        // 图片文件 - 设置文件信息但不自动处理
+        window.currentFileInfo = {
+            name: file.name,
+            url: URL.createObjectURL(file),
+            type: file.type
+        };
+        showAIToolbar(file.name, window.currentFileInfo.url, file.type);
+    } else if (file.type === 'application/pdf' || file.type.includes('word')) {
+        // PDF和Word文档 - 提取文本内容
+        if (file.type === 'application/pdf') {
+            await processPDFDocument(file, fileMessage);
+        } else if (file.type.includes('word')) {
+            await processWordDocument(file, fileMessage);
+        }
         } else if (file.type.includes('excel') || file.type.includes('spreadsheet') || 
                    file.type === 'application/vnd.ms-excel' ||
                    file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-            // Excel文件
-            await processExcelDocument(file, fileMessage);
-        } else if (file.type.includes('powerpoint') || file.type.includes('presentation')) {
-            // PPT文件
-            await processPPTDocument(file, fileMessage);
-        } else if (file.type === 'text/csv') {
-            // CSV文件
-            await processCSVFile(file, fileMessage);
-        } else if (file.type === 'application/json') {
-            // JSON文件
-            await processJSONFile(file, fileMessage);
-        } else if (file.type === 'text/html' || file.type === 'text/xml') {
-            // HTML/XML文件
-            await processHTMLFile(file, fileMessage);
-        } else {
+        // Excel文件
+        await processExcelDocument(file, fileMessage);
+    } else if (file.type.includes('powerpoint') || file.type.includes('presentation')) {
+        // PPT文件
+        await processPPTDocument(file, fileMessage);
+    } else if (file.type === 'text/csv') {
+        // CSV文件
+        await processCSVFile(file, fileMessage);
+    } else if (file.type === 'application/json') {
+        // JSON文件
+        await processJSONFile(file, fileMessage);
+    } else if (file.type === 'text/html' || file.type === 'text/xml') {
+        // HTML/XML文件
+        await processHTMLFile(file, fileMessage);
+    } else {
             // 其他支持AI的文件类型 - 尝试提取文本内容
-            await processGenericFile(file, fileMessage);
+        await processGenericFile(file, fileMessage);
         }
     } else {
         // 不支持AI分析的文件类型 - 只显示文件信息，不提供AI工具
