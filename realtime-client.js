@@ -307,6 +307,49 @@ class RealtimeClient {
                 this.onEndMeetingSuccess(data);
             }
         });
+        
+        // 语音通话事件
+        this.socket.on('callInvite', (data) => {
+            if (this.onCallInvite) {
+                this.onCallInvite(data);
+            }
+        });
+        
+        this.socket.on('callAccept', (data) => {
+            if (this.onCallAccept) {
+                this.onCallAccept(data);
+            }
+        });
+        
+        this.socket.on('callReject', (data) => {
+            if (this.onCallReject) {
+                this.onCallReject(data);
+            }
+        });
+        
+        this.socket.on('callEnd', (data) => {
+            if (this.onCallEnd) {
+                this.onCallEnd(data);
+            }
+        });
+        
+        this.socket.on('callOffer', (data) => {
+            if (this.onCallOffer) {
+                this.onCallOffer(data);
+            }
+        });
+        
+        this.socket.on('callAnswer', (data) => {
+            if (this.onCallAnswer) {
+                this.onCallAnswer(data);
+            }
+        });
+        
+        this.socket.on('iceCandidate', (data) => {
+            if (this.onIceCandidate) {
+                this.onIceCandidate(data);
+            }
+        });
     }
     
     handleConnectionError(error) {
@@ -375,6 +418,63 @@ class RealtimeClient {
                 roomId,
                 userId
             });
+            return true;
+        }
+        return false;
+    }
+    
+    // 语音通话相关方法
+    sendCallInvite(data) {
+        if (this.socket && this.isConnected) {
+            this.socket.emit('callInvite', data);
+            return true;
+        }
+        return false;
+    }
+    
+    sendCallAccept(data) {
+        if (this.socket && this.isConnected) {
+            this.socket.emit('callAccept', data);
+            return true;
+        }
+        return false;
+    }
+    
+    sendCallReject(data) {
+        if (this.socket && this.isConnected) {
+            this.socket.emit('callReject', data);
+            return true;
+        }
+        return false;
+    }
+    
+    sendCallEnd(data) {
+        if (this.socket && this.isConnected) {
+            this.socket.emit('callEnd', data);
+            return true;
+        }
+        return false;
+    }
+    
+    sendCallOffer(data) {
+        if (this.socket && this.isConnected) {
+            this.socket.emit('callOffer', data);
+            return true;
+        }
+        return false;
+    }
+    
+    sendCallAnswer(data) {
+        if (this.socket && this.isConnected) {
+            this.socket.emit('callAnswer', data);
+            return true;
+        }
+        return false;
+    }
+    
+    sendIceCandidate(data) {
+        if (this.socket && this.isConnected) {
+            this.socket.emit('iceCandidate', data);
             return true;
         }
         return false;

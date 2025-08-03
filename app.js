@@ -788,6 +788,539 @@ function init() {
     // 测试XLSX库
     setTimeout(testXLSXLibrary, 1500);
     
+    // 初始化语音通话功能
+    initVoiceCall();
+}
+
+// ==================== 语音通话功能 ====================
+
+// 初始化语音通话
+function initVoiceCall() {
+    console.log('🎙️ 初始化语音通话功能...');
+    
+    // 检查浏览器支持
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.warn('⚠️ 浏览器不支持语音通话功能');
+        showToast('您的浏览器不支持语音通话功能', 'warning');
+        return;
+    }
+    
+    // 初始化WebRTC配置
+    window.RTCPeerConnection = window.RTCPeerConnection || 
+                              window.webkitRTCPeerConnection || 
+                              window.mozRTCPeerConnection;
+    
+    if (!window.RTCPeerConnection) {
+        console.warn('⚠️ 浏览器不支持WebRTC');
+        showToast('您的浏览器不支持WebRTC，无法使用语音通话', 'warning');
+        return;
+    }
+    
+    console.log('✅ 语音通话功能初始化完成');
+}
+
+// 切换语音通话状态
+function toggleVoiceCall() {
+    if (isInCall) {
+        endVoiceCall();
+    } else {
+        startVoiceCall();
+    }
+}
+
+// 开始语音通话
+async function startVoiceCall() {
+    try {
+        console.log('📞 开始语音通话...');
+        
+        // 获取麦克风权限
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        });
+        
+        isInCall = true;
+        callStartTime = Date.now();
+        callParticipants.add(currentUserId);
+        
+        // 更新UI
+        updateCallUI();
+        showCallPanel();
+        
+        // 通知其他用户加入通话
+        if (isRealtimeEnabled && window.realtimeClient) {
+            window.realtimeClient.sendCallInvite({
+                roomId,
+                callerId: currentUserId,
+                callerName: currentUsername
+            });
+        }
+        
+        showToast('语音通话已开始', 'success');
+        console.log('✅ 语音通话已启动');
+        
+    } catch (error) {
+        console.error('❌ 启动语音通话失败:', error);
+        showToast('无法启动语音通话，请检查麦克风权限', 'error');
+    }
+}
+
+// 结束语音通话
+function endVoiceCall() {
+    console.log('📞 结束语音通话...');
+    
+    // 停止本地流
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+    
+    // 关闭所有对等连接
+    peerConnections.forEach((connection, userId) => {
+        connection.close();
+    });
+    peerConnections.clear();
+    remoteStreams.clear();
+    
+    // 重置状态
+    isInCall = false;
+    isMuted = false;
+    callParticipants.clear();
+    callStartTime = null;
+    callDuration = null;
+    
+    // 更新UI
+    updateCallUI();
+    hideCallPanel();
+    
+    // 通知其他用户结束通话
+    if (isRealtimeEnabled && window.realtimeClient) {
+        window.realtimeClient.sendCallEnd({
+            roomId,
+            userId: currentUserId
+        });
+    }
+    
+    showToast('语音通话已结束', 'info');
+    console.log('✅ 语音通话已结束');
+}
+
+// 接受通话邀请
+async function acceptCall() {
+    try {
+        console.log('📞 接受通话邀请...');
+        
+        // 获取麦克风权限
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        });
+        
+        isInCall = true;
+        callStartTime = Date.now();
+        callParticipants.add(currentUserId);
+        
+        // 更新UI
+        updateCallUI();
+        showCallPanel();
+        hideIncomingCallModal();
+        
+        // 通知发起者已接受
+        if (isRealtimeEnabled && window.realtimeClient) {
+            window.realtimeClient.sendCallAccept({
+                roomId,
+                userId: currentUserId,
+                userName: currentUsername
+            });
+        }
+        
+        showToast('已加入语音通话', 'success');
+        console.log('✅ 已接受通话邀请');
+        
+    } catch (error) {
+        console.error('❌ 接受通话失败:', error);
+        showToast('无法加入通话，请检查麦克风权限', 'error');
+    }
+}
+
+// 拒绝通话邀请
+function rejectCall() {
+    console.log('📞 拒绝通话邀请...');
+    
+    hideIncomingCallModal();
+    
+    // 通知发起者已拒绝
+    if (isRealtimeEnabled && window.realtimeClient) {
+        window.realtimeClient.sendCallReject({
+            roomId,
+            userId: currentUserId
+        });
+    }
+    
+    showToast('已拒绝通话邀请', 'info');
+}
+
+// 切换静音状态
+function toggleMute() {
+    if (!localStream) return;
+    
+    isMuted = !isMuted;
+    localStream.getAudioTracks().forEach(track => {
+        track.enabled = !isMuted;
+    });
+    
+    // 更新UI
+    const muteBtn = document.getElementById('muteBtn');
+    if (muteBtn) {
+        muteBtn.classList.toggle('muted', isMuted);
+        muteBtn.innerHTML = isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
+    }
+    
+    showToast(isMuted ? '已静音' : '已取消静音', 'info');
+}
+
+// 切换扬声器状态
+function toggleSpeaker() {
+    isSpeakerOn = !isSpeakerOn;
+    
+    // 更新UI
+    const speakerBtn = document.getElementById('speakerBtn');
+    if (speakerBtn) {
+        speakerBtn.innerHTML = isSpeakerOn ? '<i class="fas fa-volume-up"></i>' : '<i class="fas fa-volume-mute"></i>';
+    }
+    
+    showToast(isSpeakerOn ? '扬声器已开启' : '扬声器已关闭', 'info');
+}
+
+// 显示通话面板
+function showCallPanel() {
+    const callPanel = document.getElementById('voiceCallPanel');
+    if (callPanel) {
+        callPanel.style.display = 'block';
+    }
+    
+    // 更新通话按钮状态
+    const callBtn = document.getElementById('callBtn');
+    if (callBtn) {
+        callBtn.classList.add('in-call');
+        callBtn.innerHTML = '<i class="fas fa-phone-slash"></i>';
+    }
+    
+    // 开始计时
+    startCallTimer();
+}
+
+// 隐藏通话面板
+function hideCallPanel() {
+    const callPanel = document.getElementById('voiceCallPanel');
+    if (callPanel) {
+        callPanel.style.display = 'none';
+    }
+    
+    // 更新通话按钮状态
+    const callBtn = document.getElementById('callBtn');
+    if (callBtn) {
+        callBtn.classList.remove('in-call');
+        callBtn.innerHTML = '<i class="fas fa-phone"></i>';
+    }
+    
+    // 停止计时
+    stopCallTimer();
+}
+
+// 显示来电提示
+function showIncomingCallModal(callerName) {
+    const modal = document.getElementById('incomingCallModal');
+    const callerNameElement = document.getElementById('incomingCallerName');
+    
+    if (modal && callerNameElement) {
+        callerNameElement.textContent = callerName;
+        modal.style.display = 'flex';
+        
+        // 播放来电铃声（可选）
+        // playIncomingCallSound();
+    }
+}
+
+// 隐藏来电提示
+function hideIncomingCallModal() {
+    const modal = document.getElementById('incomingCallModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// 更新通话UI
+function updateCallUI() {
+    updateCallParticipants();
+    updateCallDuration();
+}
+
+// 更新通话参与者列表
+function updateCallParticipants() {
+    const participantsList = document.getElementById('callParticipantsList');
+    const participantsCount = document.getElementById('callParticipants');
+    
+    if (!participantsList) return;
+    
+    participantsList.innerHTML = '';
+    
+    // 添加当前用户
+    const currentUserDiv = document.createElement('div');
+    currentUserDiv.className = 'call-participant';
+    currentUserDiv.innerHTML = `
+        <div class="call-participant-avatar">${currentUsername.charAt(0).toUpperCase()}</div>
+        <div class="call-participant-info">
+            <div class="call-participant-name">${currentUsername} (我)</div>
+            <div class="call-participant-status">${isMuted ? '已静音' : '在线'}</div>
+        </div>
+    `;
+    participantsList.appendChild(currentUserDiv);
+    
+    // 添加其他参与者
+    callParticipants.forEach(participantId => {
+        if (participantId !== currentUserId) {
+            const participant = participants.find(p => p.userId === participantId);
+            if (participant) {
+                const participantDiv = document.createElement('div');
+                participantDiv.className = 'call-participant';
+                participantDiv.innerHTML = `
+                    <div class="call-participant-avatar">${participant.name.charAt(0).toUpperCase()}</div>
+                    <div class="call-participant-info">
+                        <div class="call-participant-name">${participant.name}</div>
+                        <div class="call-participant-status">在线</div>
+                    </div>
+                `;
+                participantsList.appendChild(participantDiv);
+            }
+        }
+    });
+    
+    // 更新参与者数量
+    if (participantsCount) {
+        participantsCount.textContent = `${callParticipants.size} 人参与`;
+    }
+}
+
+// 开始通话计时
+function startCallTimer() {
+    if (callDuration) return; // 避免重复启动
+    
+    callDuration = setInterval(() => {
+        if (callStartTime) {
+            const duration = Math.floor((Date.now() - callStartTime) / 1000);
+            const minutes = Math.floor(duration / 60);
+            const seconds = duration % 60;
+            const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            const durationElement = document.getElementById('callDuration');
+            if (durationElement) {
+                durationElement.textContent = timeString;
+            }
+        }
+    }, 1000);
+}
+
+// 停止通话计时
+function stopCallTimer() {
+    if (callDuration) {
+        clearInterval(callDuration);
+        callDuration = null;
+    }
+    
+    const durationElement = document.getElementById('callDuration');
+    if (durationElement) {
+        durationElement.textContent = '00:00';
+    }
+}
+
+// WebRTC连接处理
+function createPeerConnection(userId) {
+    const configuration = {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+    };
+    
+    const peerConnection = new RTCPeerConnection(configuration);
+    
+    // 添加本地流
+    if (localStream) {
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+    }
+    
+    // 处理远程流
+    peerConnection.ontrack = (event) => {
+        console.log('📞 收到远程音频流:', userId);
+        remoteStreams.set(userId, event.streams[0]);
+        
+        // 播放远程音频
+        const audioElement = document.createElement('audio');
+        audioElement.srcObject = event.streams[0];
+        audioElement.autoplay = true;
+        audioElement.muted = !isSpeakerOn;
+        document.body.appendChild(audioElement);
+    };
+    
+    // 处理ICE候选
+    peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+            if (isRealtimeEnabled && window.realtimeClient) {
+                window.realtimeClient.sendIceCandidate({
+                    roomId,
+                    targetUserId: userId,
+                    candidate: event.candidate
+                });
+            }
+        }
+    };
+    
+    peerConnections.set(userId, peerConnection);
+    return peerConnection;
+}
+
+// 处理通话邀请
+function handleCallInvite(data) {
+    console.log('📞 收到通话邀请:', data);
+    
+    if (isInCall) {
+        // 如果已在通话中，自动拒绝
+        if (isRealtimeEnabled && window.realtimeClient) {
+            window.realtimeClient.sendCallReject({
+                roomId,
+                userId: currentUserId,
+                reason: 'busy'
+            });
+        }
+        return;
+    }
+    
+    showIncomingCallModal(data.callerName);
+}
+
+// 处理通话接受
+function handleCallAccept(data) {
+    console.log('📞 用户接受通话:', data);
+    
+    callParticipants.add(data.userId);
+    updateCallUI();
+    
+    // 创建对等连接
+    const peerConnection = createPeerConnection(data.userId);
+    
+    // 创建并发送offer
+    peerConnection.createOffer()
+        .then(offer => peerConnection.setLocalDescription(offer))
+        .then(() => {
+            if (isRealtimeEnabled && window.realtimeClient) {
+                window.realtimeClient.sendCallOffer({
+                    roomId,
+                    targetUserId: data.userId,
+                    offer: peerConnection.localDescription
+                });
+            }
+        })
+        .catch(error => {
+            console.error('❌ 创建offer失败:', error);
+        });
+}
+
+// 处理通话拒绝
+function handleCallReject(data) {
+    console.log('📞 用户拒绝通话:', data);
+    
+    callParticipants.delete(data.userId);
+    updateCallUI();
+    
+    if (data.reason === 'busy') {
+        showToast('对方正在通话中', 'warning');
+    }
+}
+
+// 处理通话结束
+function handleCallEnd(data) {
+    console.log('📞 用户结束通话:', data);
+    
+    callParticipants.delete(data.userId);
+    
+    // 关闭对等连接
+    const peerConnection = peerConnections.get(data.userId);
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnections.delete(data.userId);
+    }
+    
+    // 移除远程流
+    remoteStreams.delete(data.userId);
+    
+    updateCallUI();
+    
+    if (callParticipants.size <= 1) {
+        // 如果只剩自己，结束通话
+        endVoiceCall();
+    }
+}
+
+// 处理WebRTC offer
+async function handleCallOffer(data) {
+    console.log('📞 收到WebRTC offer:', data);
+    
+    const peerConnection = createPeerConnection(data.fromUserId);
+    
+    try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        
+        if (isRealtimeEnabled && window.realtimeClient) {
+            window.realtimeClient.sendCallAnswer({
+                roomId,
+                targetUserId: data.fromUserId,
+                answer: peerConnection.localDescription
+            });
+        }
+    } catch (error) {
+        console.error('❌ 处理offer失败:', error);
+    }
+}
+
+// 处理WebRTC answer
+async function handleCallAnswer(data) {
+    console.log('📞 收到WebRTC answer:', data);
+    
+    const peerConnection = peerConnections.get(data.fromUserId);
+    if (peerConnection) {
+        try {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        } catch (error) {
+            console.error('❌ 处理answer失败:', error);
+        }
+    }
+}
+
+// 处理ICE候选
+function handleIceCandidate(data) {
+    console.log('📞 收到ICE候选:', data);
+    
+    const peerConnection = peerConnections.get(data.fromUserId);
+    if (peerConnection) {
+        try {
+            peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } catch (error) {
+            console.error('❌ 添加ICE候选失败:', error);
+        }
+    }
+}
+    
     showUsernameModal();
     registerServiceWorker();
     setupOfflineIndicator();
@@ -1085,6 +1618,42 @@ function setupRealtimeClient() {
             if (data.userId !== currentUserId) {
                 showTypingIndicator(data);
             }
+        },
+        
+        // 语音通话事件处理
+        onCallInvite: (data) => {
+            console.log('收到通话邀请:', data);
+            handleCallInvite(data);
+        },
+        
+        onCallAccept: (data) => {
+            console.log('用户接受通话:', data);
+            handleCallAccept(data);
+        },
+        
+        onCallReject: (data) => {
+            console.log('用户拒绝通话:', data);
+            handleCallReject(data);
+        },
+        
+        onCallEnd: (data) => {
+            console.log('用户结束通话:', data);
+            handleCallEnd(data);
+        },
+        
+        onCallOffer: (data) => {
+            console.log('收到WebRTC offer:', data);
+            handleCallOffer(data);
+        },
+        
+        onCallAnswer: (data) => {
+            console.log('收到WebRTC answer:', data);
+            handleCallAnswer(data);
+        },
+        
+        onIceCandidate: (data) => {
+            console.log('收到ICE候选:', data);
+            handleIceCandidate(data);
         },
         
         onError: (error) => {
@@ -3751,3 +4320,25 @@ renderMessage = function(message) {
 
 // 页面加载完成后初始化应用
 document.addEventListener('DOMContentLoaded', init);
+
+// 语音相关全局变量
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let audioContext = null;
+let recognition = null;
+let isTranscribing = false;
+let currentAudioBlob = null;
+let audioQueue = [];
+let isPlayingAudio = false;
+
+// 语音通话相关变量
+let localStream = null;
+let remoteStreams = new Map(); // userId -> MediaStream
+let peerConnections = new Map(); // userId -> RTCPeerConnection
+let isInCall = false;
+let isMuted = false;
+let isSpeakerOn = true;
+let callParticipants = new Set();
+let callStartTime = null;
+let callDuration = null;

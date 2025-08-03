@@ -706,6 +706,79 @@ io.on('connection', (socket) => {
             socket.emit('error', '结束会议失败: ' + error.message);
         }
     });
+    
+    // 语音通话事件处理
+    socket.on('callInvite', (data) => {
+        const { roomId, callerId, callerName } = data;
+        socket.to(roomId).emit('callInvite', {
+            roomId,
+            callerId,
+            callerName
+        });
+        console.log(`📞 用户 ${callerName} 发起语音通话邀请`);
+    });
+    
+    socket.on('callAccept', (data) => {
+        const { roomId, userId, userName } = data;
+        socket.to(roomId).emit('callAccept', {
+            roomId,
+            userId,
+            userName
+        });
+        console.log(`📞 用户 ${userName} 接受语音通话`);
+    });
+    
+    socket.on('callReject', (data) => {
+        const { roomId, userId, reason } = data;
+        socket.to(roomId).emit('callReject', {
+            roomId,
+            userId,
+            reason
+        });
+        console.log(`📞 用户拒绝语音通话，原因: ${reason || '用户拒绝'}`);
+    });
+    
+    socket.on('callEnd', (data) => {
+        const { roomId, userId } = data;
+        socket.to(roomId).emit('callEnd', {
+            roomId,
+            userId
+        });
+        console.log(`📞 用户结束语音通话`);
+    });
+    
+    socket.on('callOffer', (data) => {
+        const { roomId, targetUserId, offer, fromUserId } = data;
+        socket.to(roomId).emit('callOffer', {
+            roomId,
+            targetUserId,
+            offer,
+            fromUserId
+        });
+        console.log(`📞 转发WebRTC offer`);
+    });
+    
+    socket.on('callAnswer', (data) => {
+        const { roomId, targetUserId, answer, fromUserId } = data;
+        socket.to(roomId).emit('callAnswer', {
+            roomId,
+            targetUserId,
+            answer,
+            fromUserId
+        });
+        console.log(`📞 转发WebRTC answer`);
+    });
+    
+    socket.on('iceCandidate', (data) => {
+        const { roomId, targetUserId, candidate, fromUserId } = data;
+        socket.to(roomId).emit('iceCandidate', {
+            roomId,
+            targetUserId,
+            candidate,
+            fromUserId
+        });
+        console.log(`📞 转发ICE候选`);
+    });
 });
 
 // API路由
